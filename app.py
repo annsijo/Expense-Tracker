@@ -635,7 +635,7 @@ with tab_ai:
 import html as html_lib
 import streamlit.components.v1 as components
 
-BRAND_NAME = "FinTrack"  # change this name later when we do the branding
+BRAND_NAME = "SpendLens"  # change this name later when we do the branding
 
 BILL_CSS = """
 body {font-family: 'Courier New', monospace; background: #EEF2F7;
