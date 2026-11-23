@@ -1,3 +1,5 @@
+import os
+import json
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -5,13 +7,47 @@ from datetime import date
 st.set_page_config(page_title="Expense Tracker", page_icon="💰")
 st.title("💰 Personal Expense Tracker")
 
+# ---------- Files where we save data permanently ----------
+DATA_FILE = "transactions.csv"
+BUDGET_FILE = "budgets.json"
+COLUMNS = ["Date", "Type", "Category", "Amount", "Description"]
+
+
+def load_transactions():
+    if os.path.exists(DATA_FILE):
+        try:
+            data = pd.read_csv(DATA_FILE)
+            data["Description"] = data["Description"].fillna("")
+            return data
+        except Exception:
+            pass
+    return pd.DataFrame(columns=COLUMNS)
+
+
+def save_transactions():
+    st.session_state.transactions.to_csv(DATA_FILE, index=False)
+
+
+def load_budgets():
+    if os.path.exists(BUDGET_FILE):
+        try:
+            with open(BUDGET_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_budgets():
+    with open(BUDGET_FILE, "w") as f:
+        json.dump(st.session_state.budgets, f)
+
+
 # This is where we keep all data while the app is open
 if "transactions" not in st.session_state:
-    st.session_state.transactions = pd.DataFrame(
-        columns=["Date", "Type", "Category", "Amount", "Description"]
-    )
+    st.session_state.transactions = load_transactions()
 if "budgets" not in st.session_state:
-    st.session_state.budgets = {}
+    st.session_state.budgets = load_budgets()
 
 EXPENSE_CATEGORIES = ["Food", "Travel", "Shopping", "Bills",
                       "Entertainment", "Health", "Education", "Other"]
@@ -42,6 +78,7 @@ if submitted:
         st.session_state.transactions = pd.concat(
             [st.session_state.transactions, new_row], ignore_index=True
         )
+        save_transactions()
         st.success("Transaction added!")
 
 df = st.session_state.transactions.copy()
@@ -125,8 +162,9 @@ else:
             st.error("Please enter an amount greater than 0.")
         else:
             st.session_state.transactions.loc[
-                selected, ["Date", "Type", "Category", "Amount", "Description"]
+                selected, COLUMNS
             ] = [e_date, e_type, e_category, e_amount, e_desc]
+            save_transactions()
             st.toast("Transaction updated!")
             st.rerun()
 
@@ -134,6 +172,7 @@ else:
         st.session_state.transactions = (
             st.session_state.transactions.drop(selected).reset_index(drop=True)
         )
+        save_transactions()
         st.toast("Transaction deleted!")
         st.rerun()
 
@@ -149,6 +188,7 @@ if b_submitted:
         st.error("Please enter a budget greater than 0.")
     else:
         st.session_state.budgets[b_category] = b_amount
+        save_budgets()
         st.success(f"Budget saved for {b_category}!")
 
 if st.session_state.budgets:
