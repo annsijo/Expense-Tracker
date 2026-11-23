@@ -205,8 +205,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_dash, tab_tx, tab_budget, tab_ai = st.tabs(
-    ["📊 Dashboard", "💳 Transactions", "🎯 Budgets", "🤖 AI Insights"]
+tab_dash, tab_tx, tab_budget, tab_ai, tab_bill = st.tabs(
+    ["📊 Dashboard", "💳 Transactions", "🎯 Budgets", "🤖 AI Insights",
+     "🧾 Bills"]
 )
 
 # =====================================================================
@@ -627,3 +628,189 @@ with tab_ai:
 
             st.caption("Forecast method: linear regression (a straight-line trend "
                        "through your past monthly spending).")
+
+# =====================================================================
+# TAB 5: BILLS AND STATEMENTS
+# =====================================================================
+import html as html_lib
+import streamlit.components.v1 as components
+
+BRAND_NAME = "FinTrack"  # change this name later when we do the branding
+
+BILL_CSS = """
+body {font-family: 'Courier New', monospace; background: #EEF2F7;
+      margin: 0; padding: 16px; color: #0A2540;}
+.noprint {text-align: center; margin-bottom: 14px;}
+.noprint button {background: #0F4C81; color: white; border: none;
+      padding: 10px 22px; border-radius: 8px; font-size: 15px;
+      cursor: pointer; font-weight: bold;}
+.paper {background: #FFFFFF; max-width: 560px; margin: 0 auto;
+      padding: 28px 30px; border-radius: 6px; position: relative;
+      box-shadow: 0 4px 18px rgba(10,37,64,0.18);
+      border-top: 8px solid #0F4C81;}
+.brand {font-size: 26px; font-weight: bold; text-align: center;}
+.muted {color: #6B7A8C; font-size: 12px; text-align: center; margin-top: 2px;}
+hr.dash {border: none; border-top: 2px dashed #B8C4D2; margin: 16px 0;}
+.line {display: flex; justify-content: space-between; padding: 5px 0;
+      font-size: 14px;}
+.total {display: flex; justify-content: space-between; font-size: 22px;
+      font-weight: bold; padding: 10px 0; border-top: 2px solid #0A2540;
+      border-bottom: 2px solid #0A2540; margin-top: 10px;}
+.stamp {position: absolute; right: 26px; top: 110px;
+      transform: rotate(-14deg); border: 4px solid; padding: 4px 14px;
+      font-size: 26px; font-weight: bold; border-radius: 8px; opacity: 0.55;}
+table {width: 100%; border-collapse: collapse; font-size: 12px;
+      margin-top: 8px;}
+th {text-align: left; border-bottom: 2px solid #0A2540; padding: 5px 4px;}
+td {padding: 5px 4px; border-bottom: 1px solid #E3E9F0;}
+.right {text-align: right;}
+h3 {font-size: 14px; margin: 18px 0 4px 0; text-transform: uppercase;
+    letter-spacing: 0.05em;}
+.sign {margin-top: 30px; display: flex; justify-content: space-between;
+      font-size: 11px; color: #6B7A8C;}
+@media print {
+  .noprint {display: none;}
+  body {background: white; padding: 0;}
+  .paper {box-shadow: none; max-width: 100%;}
+}
+"""
+
+
+def wrap_page(inner):
+    return ("<html><head><meta charset='utf-8'><style>" + BILL_CSS
+            + "</style></head><body><div class='noprint'>"
+            "<button onclick='window.print()'>🖨️ Print / Save as PDF"
+            "</button></div>" + inner + "</body></html>")
+
+
+def receipt_html(r, tx_id):
+    is_income = r["Type"] == "Income"
+    stamp = "RECEIVED" if is_income else "PAID"
+    color = "#1E8E5A" if is_income else "#C0392B"
+    receipt_no = f"{BRAND_NAME[:2].upper()}-{r['Date'].strftime('%y%m%d')}-{int(tx_id):04d}"
+    desc = html_lib.escape(str(r["Description"])) or "-"
+    return (
+        '<div class="paper">'
+        f'<div class="brand">💰 {html_lib.escape(BRAND_NAME)}</div>'
+        '<div class="muted">Personal Finance Receipt</div>'
+        '<hr class="dash">'
+        f'<div class="line"><span>Receipt No.</span><span>{receipt_no}</span></div>'
+        f'<div class="line"><span>Date</span><span>{r["Date"].strftime("%d %b %Y")}</span></div>'
+        f'<div class="line"><span>Type</span><span>{r["Type"]}</span></div>'
+        f'<div class="line"><span>Category</span><span>{html_lib.escape(str(r["Category"]))}</span></div>'
+        f'<div class="line"><span>Description</span><span>{desc}</span></div>'
+        '<div style="height:10px"></div>'
+        f'<div class="total"><span>AMOUNT</span><span>₹{r["Amount"]:,.2f}</span></div>'
+        f'<div class="stamp" style="color:{color};border-color:{color}">{stamp}</div>'
+        '<hr class="dash">'
+        '<div class="muted">Thank you for tracking smart!</div>'
+        f'<div class="muted">Generated on {date.today().strftime("%d %b %Y")}</div>'
+        '</div>'
+    )
+
+
+def statement_html(month_df, month_label, budgets):
+    income = month_df[month_df["Type"] == "Income"]["Amount"].sum()
+    expense = month_df[month_df["Type"] == "Expense"]["Amount"].sum()
+    net = income - expense
+
+    rows = ""
+    for _, t in month_df.sort_values("Date").iterrows():
+        sign = "+" if t["Type"] == "Income" else "-"
+        rows += (
+            f'<tr><td>{t["Date"].strftime("%d %b")}</td>'
+            f'<td>{html_lib.escape(str(t["Category"]))}</td>'
+            f'<td>{html_lib.escape(str(t["Description"]))}</td>'
+            f'<td class="right">{sign}₹{t["Amount"]:,.0f}</td></tr>'
+        )
+
+    exp_by_cat = (month_df[month_df["Type"] == "Expense"]
+                  .groupby("Category")["Amount"].sum()
+                  .sort_values(ascending=False))
+    cat_rows = ""
+    for cat, amt in exp_by_cat.items():
+        share = amt / expense * 100 if expense > 0 else 0
+        cat_rows += (f'<tr><td>{html_lib.escape(str(cat))}</td>'
+                     f'<td class="right">₹{amt:,.0f}</td>'
+                     f'<td class="right">{share:.0f}%</td></tr>')
+
+    budget_rows = ""
+    for cat, bud in budgets.items():
+        spent = float(exp_by_cat.get(cat, 0))
+        status = "OVER" if spent > bud else "OK"
+        budget_rows += (f'<tr><td>{html_lib.escape(str(cat))}</td>'
+                        f'<td class="right">₹{spent:,.0f}</td>'
+                        f'<td class="right">₹{bud:,.0f}</td>'
+                        f'<td class="right">{status}</td></tr>')
+    budget_section = ""
+    if budget_rows:
+        budget_section = (
+            '<h3>Budget check</h3><table><tr><th>Category</th>'
+            '<th class="right">Spent</th><th class="right">Budget</th>'
+            '<th class="right">Status</th></tr>' + budget_rows + '</table>')
+
+    net_color = "#1E8E5A" if net >= 0 else "#C0392B"
+    return (
+        '<div class="paper" style="max-width:720px">'
+        f'<div class="brand">💰 {html_lib.escape(BRAND_NAME)}</div>'
+        f'<div class="muted">Monthly Statement · {month_label}</div>'
+        '<hr class="dash">'
+        f'<div class="line"><span>Total income</span><span>₹{income:,.2f}</span></div>'
+        f'<div class="line"><span>Total expenses</span><span>₹{expense:,.2f}</span></div>'
+        f'<div class="total" style="color:{net_color}"><span>NET BALANCE</span>'
+        f'<span>₹{net:,.2f}</span></div>'
+        '<h3>Spending by category</h3><table><tr><th>Category</th>'
+        '<th class="right">Amount</th><th class="right">Share</th></tr>'
+        + cat_rows + '</table>'
+        + budget_section +
+        '<h3>All transactions</h3><table><tr><th>Date</th><th>Category</th>'
+        '<th>Description</th><th class="right">Amount</th></tr>'
+        + rows + '</table>'
+        '<div class="sign"><span>Generated on '
+        f'{date.today().strftime("%d %b %Y")}</span>'
+        f'<span>{html_lib.escape(BRAND_NAME)} · Authorized statement</span></div>'
+        '</div>'
+    )
+
+
+with tab_bill:
+    st.subheader("🧾 Bills and statements")
+    st.caption("Create a printable receipt or a monthly statement, like a real "
+               "bank or shop bill.")
+
+    if df.empty:
+        st.info("Add some transactions (or load the demo data) to create bills.")
+    else:
+        kind = st.radio("What do you want to create?",
+                        ["Single transaction receipt", "Monthly statement"],
+                        horizontal=True)
+
+        if kind == "Single transaction receipt":
+            def bill_label(i):
+                r = df.loc[i]
+                return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | "
+                        f"{r['Type']} | {r['Category']} | ₹{r['Amount']:,.0f}")
+
+            tx_id = st.selectbox("Choose a transaction", list(df.index),
+                                 format_func=bill_label, key="bill_tx")
+            page = wrap_page(receipt_html(df.loc[tx_id], tx_id))
+            file_name = f"receipt_{tx_id}.html"
+            height = 620
+        else:
+            stmt_month = st.selectbox(
+                "Month", sorted(df["Month"].unique(), reverse=True),
+                key="stmt_month")
+            page = wrap_page(statement_html(
+                df[df["Month"] == stmt_month], stmt_month,
+                st.session_state.budgets))
+            file_name = f"statement_{stmt_month}.html"
+            height = 950
+
+        st.download_button(
+            "⬇️ Download this bill as a file",
+            data=page.encode("utf-8"), file_name=file_name, mime="text/html",
+        )
+        st.caption("To print: click the 🖨️ button inside the bill below. If "
+                   "nothing happens, download the file, open it, and press "
+                   "Cmd + P (or Ctrl + P).")
+        components.html(page, height=height, scrolling=True)
