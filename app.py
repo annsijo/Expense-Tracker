@@ -199,7 +199,7 @@ df["Month"] = df["Date"].dt.strftime("%Y-%m")
 
 # ---------- Header banner ----------
 st.markdown(
-    '<div class="hero"><div class="title">💰 FinTrack</div>'
+    '<div class="hero"><div class="title">💰 SpendLens</div>'
     '<div class="subtitle">Smart personal expense management: record, '
     'budget, visualize and forecast your money.</div></div>',
     unsafe_allow_html=True,
