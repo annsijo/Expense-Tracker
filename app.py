@@ -16,12 +16,13 @@ if "budgets" not in st.session_state:
 EXPENSE_CATEGORIES = ["Food", "Travel", "Shopping", "Bills",
                       "Entertainment", "Health", "Education", "Other"]
 CATEGORIES = EXPENSE_CATEGORIES + ["Salary"]
+TYPES = ["Expense", "Income"]
 
 # ---------- Add a transaction ----------
 st.header("Add a transaction")
 with st.form("add_form", clear_on_submit=True):
     t_date = st.date_input("Date", value=date.today())
-    t_type = st.selectbox("Type", ["Expense", "Income"])
+    t_type = st.selectbox("Type", TYPES)
     t_category = st.selectbox("Category", CATEGORIES)
     t_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
     t_desc = st.text_input("Description")
@@ -57,12 +58,84 @@ col1.metric("Total Income", f"₹{total_income:,.2f}")
 col2.metric("Total Expenses", f"₹{total_expense:,.2f}")
 col3.metric("Balance", f"₹{balance:,.2f}")
 
-# ---------- History ----------
+# ---------- History with search and date filters ----------
 st.header("Transaction history")
 if df.empty:
     st.info("No transactions yet. Add your first one above!")
 else:
-    st.dataframe(df, use_container_width=True)
+    hist = df.copy()
+    hist["Date"] = pd.to_datetime(hist["Date"])
+
+    f1, f2, f3 = st.columns(3)
+    search = f1.text_input("Search (category, description, type)")
+    from_date = f2.date_input("From", value=hist["Date"].min().date())
+    to_date = f3.date_input("To", value=hist["Date"].max().date())
+
+    mask = (hist["Date"].dt.date >= from_date) & (hist["Date"].dt.date <= to_date)
+    if search:
+        text = (
+            hist["Category"].astype(str) + " "
+            + hist["Description"].astype(str) + " "
+            + hist["Type"].astype(str)
+        ).str.lower()
+        mask = mask & text.str.contains(search.lower(), regex=False)
+
+    shown = hist[mask].copy()
+    shown["Date"] = shown["Date"].dt.date
+    st.dataframe(shown, use_container_width=True)
+    st.caption(f"Showing {len(shown)} of {len(hist)} transactions")
+
+    # ---------- CSV export ----------
+    csv_data = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Download all transactions as CSV",
+        data=csv_data,
+        file_name="transactions.csv",
+        mime="text/csv",
+    )
+
+# ---------- Edit or delete ----------
+st.header("Edit or delete a transaction")
+if df.empty:
+    st.info("No transactions to edit yet.")
+else:
+    def make_label(i):
+        r = df.loc[i]
+        return (f"#{i} | {r['Date']} | {r['Type']} | {r['Category']} | "
+                f"₹{r['Amount']:,.2f} | {r['Description']}")
+
+    selected = st.selectbox("Choose a transaction", list(df.index),
+                            format_func=make_label)
+    row = df.loc[selected]
+
+    with st.form(f"edit_form_{selected}"):
+        e_date = st.date_input("Date", value=pd.to_datetime(row["Date"]).date())
+        e_type = st.selectbox("Type", TYPES, index=TYPES.index(row["Type"]))
+        e_category = st.selectbox("Category", CATEGORIES,
+                                  index=CATEGORIES.index(row["Category"]))
+        e_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0,
+                                   value=float(row["Amount"]))
+        e_desc = st.text_input("Description", value=str(row["Description"]))
+        b1, b2 = st.columns(2)
+        save_clicked = b1.form_submit_button("Save changes")
+        delete_clicked = b2.form_submit_button("Delete transaction")
+
+    if save_clicked:
+        if e_amount <= 0:
+            st.error("Please enter an amount greater than 0.")
+        else:
+            st.session_state.transactions.loc[
+                selected, ["Date", "Type", "Category", "Amount", "Description"]
+            ] = [e_date, e_type, e_category, e_amount, e_desc]
+            st.toast("Transaction updated!")
+            st.rerun()
+
+    if delete_clicked:
+        st.session_state.transactions = (
+            st.session_state.transactions.drop(selected).reset_index(drop=True)
+        )
+        st.toast("Transaction deleted!")
+        st.rerun()
 
 # ---------- Set monthly budgets ----------
 st.header("Monthly budgets")
