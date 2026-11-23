@@ -302,3 +302,124 @@ else:
                 st.error(f"Over budget on {category}!")
             elif percent >= 0.8:
                 st.warning(f"Close to the limit on {category}.")
+
+# ---------- AI insights and forecast ----------
+import numpy as np
+
+st.header("🤖 Smart insights and forecast")
+
+ai_df = df.copy()
+ai_df["Date"] = pd.to_datetime(ai_df["Date"])
+ai_df["Month"] = ai_df["Date"].dt.to_period("M")
+ai_expenses = ai_df[ai_df["Type"] == "Expense"]
+
+if ai_expenses.empty:
+    st.info("Add some expenses (or load the demo data) to see insights.")
+else:
+    # Table of spending: one row per month, one column per category
+    monthly = ai_expenses.pivot_table(
+        index="Month", columns="Category", values="Amount",
+        aggfunc="sum", fill_value=0,
+    ).sort_index()
+    monthly = monthly.reindex(
+        pd.period_range(monthly.index.min(), monthly.index.max(), freq="M"),
+        fill_value=0,
+    )
+
+    # ----- Smart insights -----
+    st.subheader("Smart insights")
+    latest = monthly.index[-1]
+    latest_total = monthly.loc[latest].sum()
+    st.write(f"💸 In **{latest}** you spent **₹{latest_total:,.0f}** in total.")
+
+    top_cat = monthly.loc[latest].idxmax()
+    top_share = monthly.loc[latest, top_cat] / latest_total * 100
+    st.write(
+        f"🏆 Your biggest spending category is **{top_cat}** "
+        f"({top_share:.0f}% of the month)."
+    )
+
+    if len(monthly) >= 2:
+        previous = monthly.index[-2]
+        for cat in monthly.columns:
+            now_value = monthly.loc[latest, cat]
+            before_value = monthly.loc[previous, cat]
+            if before_value > 0 and now_value > 0:
+                change = (now_value - before_value) / before_value * 100
+                if change >= 15:
+                    st.warning(
+                        f"📈 You spent {change:.0f}% more on **{cat}** "
+                        f"than last month."
+                    )
+                elif change <= -15:
+                    st.success(
+                        f"📉 You spent {abs(change):.0f}% less on **{cat}** "
+                        f"than last month. Great job!"
+                    )
+
+    month_income = ai_df[
+        (ai_df["Type"] == "Income") & (ai_df["Month"] == latest)
+    ]["Amount"].sum()
+    if month_income > 0:
+        saved = month_income - latest_total
+        rate = saved / month_income * 100
+        if saved >= 0:
+            st.success(
+                f"🏦 You saved ₹{saved:,.0f} this month "
+                f"({rate:.0f}% of your income)."
+            )
+        else:
+            st.error(
+                f"⚠️ You spent ₹{abs(saved):,.0f} more than you earned "
+                f"this month."
+            )
+
+    # ----- Forecast -----
+    st.subheader("Next month forecast")
+    if len(monthly) < 2:
+        st.info("The forecast needs at least 2 months of data.")
+    else:
+        x = np.arange(len(monthly))
+        next_x = len(monthly)
+        forecast = {}
+        for cat in monthly.columns:
+            # draw the best straight line through the past months
+            slope, intercept = np.polyfit(x, monthly[cat].values, 1)
+            forecast[cat] = max(0.0, slope * next_x + intercept)
+
+        total_forecast = sum(forecast.values())
+        next_month = monthly.index[-1] + 1
+        last_total = monthly.iloc[-1].sum()
+
+        st.metric(
+            f"Predicted spending for {next_month}",
+            f"₹{total_forecast:,.0f}",
+            delta=f"₹{total_forecast - last_total:,.0f} vs {latest}",
+            delta_color="inverse",
+        )
+
+        totals = monthly.sum(axis=1)
+        chart_data = pd.DataFrame(
+            {"Spending (₹)": list(totals.values) + [total_forecast]},
+            index=[str(m) for m in totals.index] + [f"{next_month} (forecast)"],
+        )
+        st.bar_chart(chart_data)
+
+        forecast_table = pd.DataFrame({
+            "Category": list(forecast.keys()),
+            "Forecast (₹)": [round(v) for v in forecast.values()],
+        }).sort_values("Forecast (₹)", ascending=False).reset_index(drop=True)
+        st.table(forecast_table)
+
+        for cat, budget in st.session_state.budgets.items():
+            if forecast.get(cat, 0) > budget:
+                st.warning(
+                    f"🔮 At this pace you may go over your **{cat}** budget "
+                    f"next month (forecast ₹{forecast[cat]:,.0f} vs "
+                    f"budget ₹{budget:,.0f})."
+                )
+
+        st.caption(
+            "Forecast method: linear regression (a straight-line trend "
+            "through your past monthly spending)."
+        )
