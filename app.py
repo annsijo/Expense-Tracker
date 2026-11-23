@@ -164,7 +164,7 @@ def make_demo_data():
 
 
 # ---------- Sidebar ----------
-st.sidebar.markdown("## 💰 FinTrack")
+st.sidebar.markdown("## 💰 SpendLens")
 st.sidebar.caption("Track income and expenses, set budgets, and get AI insights.")
 st.sidebar.divider()
 st.sidebar.subheader("Demo tools")
