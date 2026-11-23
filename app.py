@@ -54,6 +54,71 @@ EXPENSE_CATEGORIES = ["Food", "Travel", "Shopping", "Bills",
 CATEGORIES = EXPENSE_CATEGORIES + ["Salary"]
 TYPES = ["Expense", "Income"]
 
+# ---------- Demo data (left sidebar) ----------
+def make_demo_data():
+    today = date.today()
+    # (day, type, category, base amount, description)
+    template = [
+        (1, "Income", "Salary", 30000, "Monthly allowance"),
+        (2, "Expense", "Bills", 1200, "Mobile and internet recharge"),
+        (3, "Expense", "Food", 900, "Groceries"),
+        (5, "Expense", "Travel", 600, "Metro and bus pass"),
+        (7, "Expense", "Food", 650, "Dinner with friends"),
+        (9, "Expense", "Shopping", 1800, "Clothes"),
+        (12, "Expense", "Entertainment", 700, "Movie and snacks"),
+        (14, "Expense", "Food", 800, "Groceries"),
+        (16, "Expense", "Education", 1500, "Books and course fee"),
+        (18, "Expense", "Health", 500, "Pharmacy"),
+        (20, "Expense", "Travel", 900, "Cab rides"),
+        (22, "Expense", "Food", 1100, "Weekend outing"),
+        (24, "Expense", "Bills", 2500, "Electricity bill"),
+        (26, "Expense", "Entertainment", 600, "Streaming subscription"),
+    ]
+    # spending grows a little each month, so the charts look interesting
+    multipliers = {2: 0.9, 1: 1.0, 0: 1.25}
+    rows = []
+    for months_back in [2, 1, 0]:
+        month = today.month - months_back
+        year = today.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        for day, t_type, category, base, desc in template:
+            if months_back == 0 and day > today.day:
+                continue  # no transactions in the future
+            amount = base
+            if t_type == "Expense":
+                amount = round(base * multipliers[months_back] / 10) * 10
+            rows.append({
+                "Date": date(year, month, day),
+                "Type": t_type,
+                "Category": category,
+                "Amount": float(amount),
+                "Description": desc,
+            })
+    return pd.DataFrame(rows, columns=COLUMNS)
+
+
+st.sidebar.header("Demo tools")
+if st.sidebar.button("Load demo data"):
+    st.session_state.transactions = make_demo_data()
+    st.session_state.budgets = {
+        "Food": 4000, "Travel": 2500, "Shopping": 3000,
+        "Bills": 6000, "Entertainment": 2500,
+    }
+    save_transactions()
+    save_budgets()
+    st.rerun()
+
+if st.sidebar.button("Clear all data"):
+    st.session_state.transactions = pd.DataFrame(columns=COLUMNS)
+    st.session_state.budgets = {}
+    save_transactions()
+    save_budgets()
+    st.rerun()
+
+st.sidebar.caption("Load demo data replaces everything currently in the app.")
+
 # ---------- Add a transaction ----------
 st.header("Add a transaction")
 with st.form("add_form", clear_on_submit=True):
