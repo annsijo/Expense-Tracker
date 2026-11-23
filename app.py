@@ -1,11 +1,77 @@
 import os
 import json
-import streamlit as st
+import numpy as np
 import pandas as pd
+import altair as alt
+import streamlit as st
 from datetime import date
 
-st.set_page_config(page_title="Expense Tracker", page_icon="💰")
-st.title("💰 Personal Expense Tracker")
+st.set_page_config(
+    page_title="FinTrack | Personal Expense Tracker",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ---------- Colors ----------
+NAVY = "#0A2540"
+BLUE = "#0F4C81"
+GREEN = "#1E8E5A"
+RED = "#C0392B"
+AMBER = "#E0A100"
+PALETTE = ["#0A2540", "#0F4C81", "#1C7ED6", "#4DABF7",
+           "#1E8E5A", "#E0A100", "#E67E22", "#7F8C9A"]
+
+# ---------- Custom styling (CSS) ----------
+st.markdown("""
+<style>
+.block-container {padding-top: 1.5rem; max-width: 1250px;}
+.hero {background: linear-gradient(120deg, #0A2540 0%, #0F4C81 60%, #1C7ED6 100%);
+       padding: 26px 32px; border-radius: 16px; margin-bottom: 18px;}
+.hero .title {color: #FFFFFF; font-size: 2rem; font-weight: 800;}
+.hero .subtitle {color: #D6E4F5; font-size: 1rem; margin-top: 4px;}
+.kpi {background: #FFFFFF; border-radius: 14px; padding: 18px 20px;
+      border-left: 6px solid #0F4C81; box-shadow: 0 2px 8px rgba(10,37,64,0.10);}
+.kpi .label {color: #5B6B7F; font-size: 0.8rem; text-transform: uppercase;
+             letter-spacing: 0.05em; font-weight: 600;}
+.kpi .value {color: #0A2540; font-size: 1.8rem; font-weight: 800; margin-top: 4px;}
+.kpi .sub {color: #5B6B7F; font-size: 0.8rem; margin-top: 2px;}
+.bcard {background: #FFFFFF; border-radius: 14px; padding: 16px 20px;
+        margin-bottom: 12px; box-shadow: 0 2px 8px rgba(10,37,64,0.08);}
+.bcard .brow {display: flex; justify-content: space-between;
+              color: #0A2540; margin-bottom: 8px;}
+.bar-bg {background: #E6ECF4; border-radius: 8px; height: 12px; overflow: hidden;}
+.bar-fill {height: 12px; border-radius: 8px;}
+.bcard .bsub {font-size: 0.85rem; margin-top: 6px; font-weight: 600;}
+div[data-testid="stTabs"] button p {font-size: 1.05rem; font-weight: 600;}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ---------- Small helper functions ----------
+def money(x):
+    sign = "-" if x < 0 else ""
+    return f"{sign}₹{abs(x):,.0f}"
+
+
+def kpi(label, value, sub="", color=BLUE):
+    return (f'<div class="kpi" style="border-left-color:{color}">'
+            f'<div class="label">{label}</div>'
+            f'<div class="value">{value}</div>'
+            f'<div class="sub">{sub}</div></div>')
+
+
+def stretch(func, *args, **kwargs):
+    """Make a table or chart use the full width (works on old and new Streamlit)."""
+    try:
+        return func(*args, width="stretch", **kwargs)
+    except Exception:
+        return func(*args, use_container_width=True, **kwargs)
+
+
+def safe_index(options, value):
+    return options.index(value) if value in options else 0
+
 
 # ---------- Files where we save data permanently ----------
 DATA_FILE = "transactions.csv"
@@ -43,7 +109,6 @@ def save_budgets():
         json.dump(st.session_state.budgets, f)
 
 
-# This is where we keep all data while the app is open
 if "transactions" not in st.session_state:
     st.session_state.transactions = load_transactions()
 if "budgets" not in st.session_state:
@@ -51,13 +116,13 @@ if "budgets" not in st.session_state:
 
 EXPENSE_CATEGORIES = ["Food", "Travel", "Shopping", "Bills",
                       "Entertainment", "Health", "Education", "Other"]
-CATEGORIES = EXPENSE_CATEGORIES + ["Salary"]
+CATEGORIES = EXPENSE_CATEGORIES + ["Salary", "Freelance", "Other Income"]
 TYPES = ["Expense", "Income"]
 
-# ---------- Demo data (left sidebar) ----------
+
+# ---------- Demo data ----------
 def make_demo_data():
     today = date.today()
-    # (day, type, category, base amount, description)
     template = [
         (1, "Income", "Salary", 30000, "Monthly allowance"),
         (2, "Expense", "Bills", 1200, "Mobile and internet recharge"),
@@ -74,7 +139,6 @@ def make_demo_data():
         (24, "Expense", "Bills", 2500, "Electricity bill"),
         (26, "Expense", "Entertainment", 600, "Streaming subscription"),
     ]
-    # spending grows a little each month, so the charts look interesting
     multipliers = {2: 0.9, 1: 1.0, 0: 1.25}
     rows = []
     for months_back in [2, 1, 0]:
@@ -85,7 +149,7 @@ def make_demo_data():
             year -= 1
         for day, t_type, category, base, desc in template:
             if months_back == 0 and day > today.day:
-                continue  # no transactions in the future
+                continue
             amount = base
             if t_type == "Expense":
                 amount = round(base * multipliers[months_back] / 10) * 10
@@ -99,7 +163,12 @@ def make_demo_data():
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
-st.sidebar.header("Demo tools")
+# ---------- Sidebar ----------
+st.sidebar.markdown("## 💰 FinTrack")
+st.sidebar.caption("Track income and expenses, set budgets, and get AI insights.")
+st.sidebar.divider()
+st.sidebar.subheader("Demo tools")
+
 if st.sidebar.button("Load demo data"):
     st.session_state.transactions = make_demo_data()
     st.session_state.budgets = {
@@ -110,316 +179,451 @@ if st.sidebar.button("Load demo data"):
     save_budgets()
     st.rerun()
 
+sure = st.sidebar.checkbox("I'm sure I want to clear everything")
 if st.sidebar.button("Clear all data"):
-    st.session_state.transactions = pd.DataFrame(columns=COLUMNS)
-    st.session_state.budgets = {}
-    save_transactions()
-    save_budgets()
-    st.rerun()
-
+    if sure:
+        st.session_state.transactions = pd.DataFrame(columns=COLUMNS)
+        st.session_state.budgets = {}
+        save_transactions()
+        save_budgets()
+        st.rerun()
+    else:
+        st.sidebar.warning("Tick the box above first.")
 st.sidebar.caption("Load demo data replaces everything currently in the app.")
 
-# ---------- Add a transaction ----------
-st.header("Add a transaction")
-with st.form("add_form", clear_on_submit=True):
-    t_date = st.date_input("Date", value=date.today())
-    t_type = st.selectbox("Type", TYPES)
-    t_category = st.selectbox("Category", CATEGORIES)
-    t_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
-    t_desc = st.text_input("Description")
-    submitted = st.form_submit_button("Add transaction")
-
-if submitted:
-    if t_amount <= 0:
-        st.error("Please enter an amount greater than 0.")
-    else:
-        new_row = pd.DataFrame([{
-            "Date": t_date,
-            "Type": t_type,
-            "Category": t_category,
-            "Amount": t_amount,
-            "Description": t_desc,
-        }])
-        st.session_state.transactions = pd.concat(
-            [st.session_state.transactions, new_row], ignore_index=True
-        )
-        save_transactions()
-        st.success("Transaction added!")
-
+# ---------- Prepare the data ----------
 df = st.session_state.transactions.copy()
 df["Amount"] = pd.to_numeric(df["Amount"])
+df["Date"] = pd.to_datetime(df["Date"])
+df["Month"] = df["Date"].dt.strftime("%Y-%m")
 
-# ---------- Summary ----------
-st.header("Summary")
-total_income = df[df["Type"] == "Income"]["Amount"].sum()
-total_expense = df[df["Type"] == "Expense"]["Amount"].sum()
-balance = total_income - total_expense
+# ---------- Header banner ----------
+st.markdown(
+    '<div class="hero"><div class="title">💰 FinTrack</div>'
+    '<div class="subtitle">Smart personal expense management: record, '
+    'budget, visualize and forecast your money.</div></div>',
+    unsafe_allow_html=True,
+)
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Income", f"₹{total_income:,.2f}")
-col2.metric("Total Expenses", f"₹{total_expense:,.2f}")
-col3.metric("Balance", f"₹{balance:,.2f}")
+tab_dash, tab_tx, tab_budget, tab_ai = st.tabs(
+    ["📊 Dashboard", "💳 Transactions", "🎯 Budgets", "🤖 AI Insights"]
+)
 
-# ---------- History with search and date filters ----------
-st.header("Transaction history")
-if df.empty:
-    st.info("No transactions yet. Add your first one above!")
-else:
-    hist = df.copy()
-    hist["Date"] = pd.to_datetime(hist["Date"])
+# =====================================================================
+# TAB 1: DASHBOARD
+# =====================================================================
+with tab_dash:
+    if df.empty:
+        st.info("No data yet. Click **Load demo data** in the left sidebar, "
+                "or add your first transaction in the Transactions tab.")
+    else:
+        months = sorted(df["Month"].unique(), reverse=True)
+        choice = st.selectbox("Period", ["All time"] + months)
+        view = df if choice == "All time" else df[df["Month"] == choice]
 
-    f1, f2, f3 = st.columns(3)
-    search = f1.text_input("Search (category, description, type)")
-    from_date = f2.date_input("From", value=hist["Date"].min().date())
-    to_date = f3.date_input("To", value=hist["Date"].max().date())
+        income = view[view["Type"] == "Income"]["Amount"].sum()
+        expense = view[view["Type"] == "Expense"]["Amount"].sum()
+        balance = income - expense
+        rate = (balance / income * 100) if income > 0 else 0
 
-    mask = (hist["Date"].dt.date >= from_date) & (hist["Date"].dt.date <= to_date)
-    if search:
-        text = (
-            hist["Category"].astype(str) + " "
-            + hist["Description"].astype(str) + " "
-            + hist["Type"].astype(str)
-        ).str.lower()
-        mask = mask & text.str.contains(search.lower(), regex=False)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.markdown(kpi("Available balance", money(balance), choice, BLUE),
+                    unsafe_allow_html=True)
+        k2.markdown(kpi("Total income", money(income), "money in", GREEN),
+                    unsafe_allow_html=True)
+        k3.markdown(kpi("Total expenses", money(expense), "money out", RED),
+                    unsafe_allow_html=True)
+        k4.markdown(kpi("Savings rate", f"{rate:.0f}%", "of income saved", AMBER),
+                    unsafe_allow_html=True)
 
-    shown = hist[mask].copy()
-    shown["Date"] = shown["Date"].dt.date
-    st.dataframe(shown, use_container_width=True)
-    st.caption(f"Showing {len(shown)} of {len(hist)} transactions")
+        st.write("")
+        c1, c2 = st.columns(2)
 
-    # ---------- CSV export ----------
-    csv_data = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Download all transactions as CSV",
-        data=csv_data,
-        file_name="transactions.csv",
-        mime="text/csv",
-    )
+        with c1:
+            st.subheader("Spending by category")
+            exp = (view[view["Type"] == "Expense"]
+                   .groupby("Category", as_index=False)["Amount"].sum())
+            if exp.empty:
+                st.info("No expenses in this period.")
+            else:
+                donut = alt.Chart(exp).mark_arc(innerRadius=70).encode(
+                    theta=alt.Theta("Amount:Q"),
+                    color=alt.Color("Category:N",
+                                    scale=alt.Scale(range=PALETTE),
+                                    legend=alt.Legend(title=None)),
+                    tooltip=["Category:N",
+                             alt.Tooltip("Amount:Q", format=",.0f")],
+                ).properties(height=320)
+                stretch(st.altair_chart, donut)
 
-# ---------- Edit or delete ----------
-st.header("Edit or delete a transaction")
-if df.empty:
-    st.info("No transactions to edit yet.")
-else:
-    def make_label(i):
-        r = df.loc[i]
-        return (f"#{i} | {r['Date']} | {r['Type']} | {r['Category']} | "
-                f"₹{r['Amount']:,.2f} | {r['Description']}")
+        with c2:
+            st.subheader("Income vs expenses by month")
+            trend = df.groupby(["Month", "Type"], as_index=False)["Amount"].sum()
+            bars = alt.Chart(trend).mark_bar().encode(
+                x=alt.X("Month:N", title=None),
+                y=alt.Y("Amount:Q", title="Amount (₹)"),
+                xOffset="Type:N",
+                color=alt.Color("Type:N",
+                                scale=alt.Scale(domain=["Income", "Expense"],
+                                                range=[GREEN, RED]),
+                                legend=alt.Legend(title=None)),
+                tooltip=["Month:N", "Type:N",
+                         alt.Tooltip("Amount:Q", format=",.0f")],
+            ).properties(height=320)
+            stretch(st.altair_chart, bars)
 
-    selected = st.selectbox("Choose a transaction", list(df.index),
-                            format_func=make_label)
-    row = df.loc[selected]
+        r1, r2 = st.columns(2)
+        with r1:
+            st.subheader("Top 5 biggest expenses")
+            top = (view[view["Type"] == "Expense"]
+                   .nlargest(5, "Amount")[["Date", "Category", "Amount", "Description"]]
+                   .copy())
+            top["Date"] = top["Date"].dt.date
+            stretch(st.dataframe, top, hide_index=True)
+        with r2:
+            st.subheader("Recent transactions")
+            recent = (df.sort_values("Date", ascending=False).head(5)
+                      [["Date", "Type", "Category", "Amount"]].copy())
+            recent["Date"] = recent["Date"].dt.date
+            stretch(st.dataframe, recent, hide_index=True)
 
-    with st.form(f"edit_form_{selected}"):
-        e_date = st.date_input("Date", value=pd.to_datetime(row["Date"]).date())
-        e_type = st.selectbox("Type", TYPES, index=TYPES.index(row["Type"]))
-        e_category = st.selectbox("Category", CATEGORIES,
-                                  index=CATEGORIES.index(row["Category"]))
-        e_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0,
-                                   value=float(row["Amount"]))
-        e_desc = st.text_input("Description", value=str(row["Description"]))
-        b1, b2 = st.columns(2)
-        save_clicked = b1.form_submit_button("Save changes")
-        delete_clicked = b2.form_submit_button("Delete transaction")
+# =====================================================================
+# TAB 2: TRANSACTIONS
+# =====================================================================
+with tab_tx:
+    left, right = st.columns([1, 2])
 
-    if save_clicked:
-        if e_amount <= 0:
-            st.error("Please enter an amount greater than 0.")
+    with left:
+        st.subheader("Add a transaction")
+        with st.form("add_form", clear_on_submit=True):
+            t_date = st.date_input("Date", value=date.today())
+            t_type = st.selectbox("Type", TYPES)
+            t_category = st.selectbox("Category", CATEGORIES)
+            t_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
+            t_desc = st.text_input("Description")
+            submitted = st.form_submit_button("➕ Add transaction")
+
+        if submitted:
+            if t_amount <= 0:
+                st.error("Please enter an amount greater than 0.")
+            else:
+                new_row = pd.DataFrame([{
+                    "Date": t_date, "Type": t_type, "Category": t_category,
+                    "Amount": t_amount, "Description": t_desc,
+                }])
+                st.session_state.transactions = pd.concat(
+                    [st.session_state.transactions, new_row], ignore_index=True
+                )
+                save_transactions()
+                st.toast("Transaction added!")
+                st.rerun()
+
+    with right:
+        st.subheader("Transaction history")
+        if df.empty:
+            st.info("No transactions yet. Add your first one on the left!")
         else:
-            st.session_state.transactions.loc[
-                selected, COLUMNS
-            ] = [e_date, e_type, e_category, e_amount, e_desc]
+            f1, f2 = st.columns(2)
+            search = f1.text_input("🔍 Search",
+                                   placeholder="category, description, type...")
+            type_filter = f2.selectbox("Type filter", ["All"] + TYPES)
+            f3, f4 = st.columns(2)
+            from_date = f3.date_input("From", value=df["Date"].min().date())
+            to_date = f4.date_input("To", value=df["Date"].max().date())
+
+            mask = ((df["Date"].dt.date >= from_date)
+                    & (df["Date"].dt.date <= to_date))
+            if type_filter != "All":
+                mask = mask & (df["Type"] == type_filter)
+            if search:
+                text = (df["Category"].astype(str) + " "
+                        + df["Description"].astype(str) + " "
+                        + df["Type"].astype(str)).str.lower()
+                mask = mask & text.str.contains(search.lower(), regex=False)
+
+            shown = df[mask].sort_values("Date", ascending=False).copy()
+            shown["Date"] = shown["Date"].dt.date
+            table = shown[COLUMNS].copy()
+            table.insert(0, "ID", shown.index)
+            stretch(st.dataframe, table, hide_index=True)
+            st.caption(f"Showing {len(shown)} of {len(df)} transactions")
+
+            d1, d2 = st.columns(2)
+            d1.download_button(
+                "⬇️ Download shown rows as CSV",
+                data=shown[COLUMNS].to_csv(index=False).encode("utf-8"),
+                file_name="transactions_filtered.csv", mime="text/csv",
+            )
+            d2.download_button(
+                "⬇️ Download all transactions as CSV",
+                data=df[COLUMNS].to_csv(index=False).encode("utf-8"),
+                file_name="transactions.csv", mime="text/csv",
+            )
+
+    st.divider()
+    st.subheader("✏️ Edit or delete a transaction")
+    if df.empty:
+        st.info("No transactions to edit yet.")
+    else:
+        def make_label(i):
+            r = df.loc[i]
+            return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | {r['Type']} | "
+                    f"{r['Category']} | ₹{r['Amount']:,.0f} | {r['Description']}")
+
+        selected = st.selectbox("Choose a transaction", list(df.index),
+                                format_func=make_label)
+        row = df.loc[selected]
+
+        with st.form(f"edit_form_{selected}"):
+            e1, e2, e3 = st.columns(3)
+            e_date = e1.date_input("Date", value=row["Date"].date())
+            e_type = e2.selectbox("Type", TYPES,
+                                  index=safe_index(TYPES, row["Type"]))
+            e_category = e3.selectbox("Category", CATEGORIES,
+                                      index=safe_index(CATEGORIES, row["Category"]))
+            e4, e5 = st.columns(2)
+            e_amount = e4.number_input("Amount (₹)", min_value=0.0, step=10.0,
+                                       value=float(row["Amount"]))
+            e_desc = e5.text_input("Description", value=str(row["Description"]))
+            b1, b2 = st.columns(2)
+            save_clicked = b1.form_submit_button("💾 Save changes")
+            delete_clicked = b2.form_submit_button("🗑️ Delete transaction")
+
+        if save_clicked:
+            if e_amount <= 0:
+                st.error("Please enter an amount greater than 0.")
+            else:
+                st.session_state.transactions.loc[selected, COLUMNS] = [
+                    e_date, e_type, e_category, e_amount, e_desc
+                ]
+                save_transactions()
+                st.toast("Transaction updated!")
+                st.rerun()
+
+        if delete_clicked:
+            st.session_state.transactions = (
+                st.session_state.transactions.drop(selected).reset_index(drop=True)
+            )
             save_transactions()
-            st.toast("Transaction updated!")
+            st.toast("Transaction deleted!")
             st.rerun()
 
-    if delete_clicked:
-        st.session_state.transactions = (
-            st.session_state.transactions.drop(selected).reset_index(drop=True)
-        )
-        save_transactions()
-        st.toast("Transaction deleted!")
-        st.rerun()
+# =====================================================================
+# TAB 3: BUDGETS
+# =====================================================================
+with tab_budget:
+    bl, br = st.columns([1, 2])
 
-# ---------- Set monthly budgets ----------
-st.header("Monthly budgets")
-with st.form("budget_form"):
-    b_category = st.selectbox("Category", EXPENSE_CATEGORIES)
-    b_amount = st.number_input("Monthly budget (₹)", min_value=0.0, step=100.0)
-    b_submitted = st.form_submit_button("Save budget")
+    with bl:
+        st.subheader("Set a monthly budget")
+        with st.form("budget_form"):
+            b_category = st.selectbox("Category", EXPENSE_CATEGORIES)
+            b_amount = st.number_input("Monthly budget (₹)", min_value=0.0,
+                                       step=100.0)
+            b_submitted = st.form_submit_button("💾 Save budget")
 
-if b_submitted:
-    if b_amount <= 0:
-        st.error("Please enter a budget greater than 0.")
-    else:
-        st.session_state.budgets[b_category] = b_amount
-        save_budgets()
-        st.success(f"Budget saved for {b_category}!")
+        if b_submitted:
+            if b_amount <= 0:
+                st.error("Please enter a budget greater than 0.")
+            else:
+                st.session_state.budgets[b_category] = b_amount
+                save_budgets()
+                st.toast(f"Budget saved for {b_category}!")
+                st.rerun()
 
-if st.session_state.budgets:
-    budget_table = pd.DataFrame(
-        list(st.session_state.budgets.items()),
-        columns=["Category", "Monthly Budget (₹)"],
-    )
-    st.table(budget_table)
+        if st.session_state.budgets:
+            st.write("")
+            remove_cat = st.selectbox("Remove a budget",
+                                      list(st.session_state.budgets.keys()))
+            if st.button("🗑️ Remove this budget"):
+                st.session_state.budgets.pop(remove_cat, None)
+                save_budgets()
+                st.rerun()
 
-# ---------- Charts and budget utilization ----------
-st.header("Charts and budget utilization")
-if df.empty:
-    st.info("Add some transactions to see charts.")
-else:
-    chart_df = df.copy()
-    chart_df["Date"] = pd.to_datetime(chart_df["Date"])
-    chart_df["Month"] = chart_df["Date"].dt.strftime("%Y-%m")
-
-    months = sorted(chart_df["Month"].unique(), reverse=True)
-    selected_month = st.selectbox("Select month", months)
-
-    month_expenses = chart_df[
-        (chart_df["Type"] == "Expense") & (chart_df["Month"] == selected_month)
-    ]
-    spent = month_expenses.groupby("Category")["Amount"].sum()
-
-    st.subheader("Spending by category")
-    if spent.empty:
-        st.info("No expenses in this month.")
-    else:
-        st.bar_chart(spent)
-
-    st.subheader("Budget utilization")
-    if not st.session_state.budgets:
-        st.info("Set a monthly budget above to see utilization.")
-    else:
-        for category, budget in st.session_state.budgets.items():
-            amount_spent = float(spent.get(category, 0))
-            percent = amount_spent / budget
-            st.write(
-                f"**{category}**: ₹{amount_spent:,.2f} of ₹{budget:,.2f} "
-                f"({percent * 100:.0f}%)"
-            )
-            st.progress(min(percent, 1.0))
-            if percent > 1:
-                st.error(f"Over budget on {category}!")
-            elif percent >= 0.8:
-                st.warning(f"Close to the limit on {category}.")
-
-# ---------- AI insights and forecast ----------
-import numpy as np
-
-st.header("🤖 Smart insights and forecast")
-
-ai_df = df.copy()
-ai_df["Date"] = pd.to_datetime(ai_df["Date"])
-ai_df["Month"] = ai_df["Date"].dt.to_period("M")
-ai_expenses = ai_df[ai_df["Type"] == "Expense"]
-
-if ai_expenses.empty:
-    st.info("Add some expenses (or load the demo data) to see insights.")
-else:
-    # Table of spending: one row per month, one column per category
-    monthly = ai_expenses.pivot_table(
-        index="Month", columns="Category", values="Amount",
-        aggfunc="sum", fill_value=0,
-    ).sort_index()
-    monthly = monthly.reindex(
-        pd.period_range(monthly.index.min(), monthly.index.max(), freq="M"),
-        fill_value=0,
-    )
-
-    # ----- Smart insights -----
-    st.subheader("Smart insights")
-    latest = monthly.index[-1]
-    latest_total = monthly.loc[latest].sum()
-    st.write(f"💸 In **{latest}** you spent **₹{latest_total:,.0f}** in total.")
-
-    top_cat = monthly.loc[latest].idxmax()
-    top_share = monthly.loc[latest, top_cat] / latest_total * 100
-    st.write(
-        f"🏆 Your biggest spending category is **{top_cat}** "
-        f"({top_share:.0f}% of the month)."
-    )
-
-    if len(monthly) >= 2:
-        previous = monthly.index[-2]
-        for cat in monthly.columns:
-            now_value = monthly.loc[latest, cat]
-            before_value = monthly.loc[previous, cat]
-            if before_value > 0 and now_value > 0:
-                change = (now_value - before_value) / before_value * 100
-                if change >= 15:
-                    st.warning(
-                        f"📈 You spent {change:.0f}% more on **{cat}** "
-                        f"than last month."
-                    )
-                elif change <= -15:
-                    st.success(
-                        f"📉 You spent {abs(change):.0f}% less on **{cat}** "
-                        f"than last month. Great job!"
-                    )
-
-    month_income = ai_df[
-        (ai_df["Type"] == "Income") & (ai_df["Month"] == latest)
-    ]["Amount"].sum()
-    if month_income > 0:
-        saved = month_income - latest_total
-        rate = saved / month_income * 100
-        if saved >= 0:
-            st.success(
-                f"🏦 You saved ₹{saved:,.0f} this month "
-                f"({rate:.0f}% of your income)."
-            )
+    with br:
+        st.subheader("Budget utilization")
+        if df.empty:
+            st.info("Add some transactions to see budget utilization.")
+        elif not st.session_state.budgets:
+            st.info("Set a monthly budget on the left to see utilization.")
         else:
-            st.error(
-                f"⚠️ You spent ₹{abs(saved):,.0f} more than you earned "
-                f"this month."
-            )
+            b_months = sorted(df["Month"].unique(), reverse=True)
+            b_month = st.selectbox("Month", b_months, key="budget_month")
+            spent = (df[(df["Type"] == "Expense") & (df["Month"] == b_month)]
+                     .groupby("Category")["Amount"].sum())
 
-    # ----- Forecast -----
-    st.subheader("Next month forecast")
-    if len(monthly) < 2:
-        st.info("The forecast needs at least 2 months of data.")
-    else:
-        x = np.arange(len(monthly))
-        next_x = len(monthly)
-        forecast = {}
-        for cat in monthly.columns:
-            # draw the best straight line through the past months
-            slope, intercept = np.polyfit(x, monthly[cat].values, 1)
-            forecast[cat] = max(0.0, slope * next_x + intercept)
-
-        total_forecast = sum(forecast.values())
-        next_month = monthly.index[-1] + 1
-        last_total = monthly.iloc[-1].sum()
-
-        st.metric(
-            f"Predicted spending for {next_month}",
-            f"₹{total_forecast:,.0f}",
-            delta=f"₹{total_forecast - last_total:,.0f} vs {latest}",
-            delta_color="inverse",
-        )
-
-        totals = monthly.sum(axis=1)
-        chart_data = pd.DataFrame(
-            {"Spending (₹)": list(totals.values) + [total_forecast]},
-            index=[str(m) for m in totals.index] + [f"{next_month} (forecast)"],
-        )
-        st.bar_chart(chart_data)
-
-        forecast_table = pd.DataFrame({
-            "Category": list(forecast.keys()),
-            "Forecast (₹)": [round(v) for v in forecast.values()],
-        }).sort_values("Forecast (₹)", ascending=False).reset_index(drop=True)
-        st.table(forecast_table)
-
-        for cat, budget in st.session_state.budgets.items():
-            if forecast.get(cat, 0) > budget:
-                st.warning(
-                    f"🔮 At this pace you may go over your **{cat}** budget "
-                    f"next month (forecast ₹{forecast[cat]:,.0f} vs "
-                    f"budget ₹{budget:,.0f})."
+            for cat, bud in st.session_state.budgets.items():
+                amount_spent = float(spent.get(cat, 0))
+                pct = amount_spent / bud if bud > 0 else 0
+                if pct > 1:
+                    color = RED
+                    status = f"Over budget by {money(amount_spent - bud)}"
+                elif pct >= 0.8:
+                    color = AMBER
+                    status = "Close to the limit"
+                else:
+                    color = GREEN
+                    status = "On track"
+                width = min(pct, 1.0) * 100
+                st.markdown(
+                    f'<div class="bcard"><div class="brow">'
+                    f'<b>{cat}</b><span>{money(amount_spent)} of {money(bud)}</span>'
+                    f'</div><div class="bar-bg"><div class="bar-fill" '
+                    f'style="width:{width:.0f}%;background:{color}"></div></div>'
+                    f'<div class="bsub" style="color:{color}">'
+                    f'{status} · {pct * 100:.0f}% used</div></div>',
+                    unsafe_allow_html=True,
                 )
 
-        st.caption(
-            "Forecast method: linear regression (a straight-line trend "
-            "through your past monthly spending)."
+# =====================================================================
+# TAB 4: AI INSIGHTS
+# =====================================================================
+with tab_ai:
+    ai_df = df.copy()
+    ai_df["Period"] = ai_df["Date"].dt.to_period("M")
+    ai_expenses = ai_df[ai_df["Type"] == "Expense"]
+
+    if ai_expenses.empty:
+        st.info("Add some expenses (or load the demo data) to see insights.")
+    else:
+        monthly = ai_expenses.pivot_table(
+            index="Period", columns="Category", values="Amount",
+            aggfunc="sum", fill_value=0,
+        ).sort_index()
+        monthly = monthly.reindex(
+            pd.period_range(monthly.index.min(), monthly.index.max(), freq="M"),
+            fill_value=0,
         )
+
+        latest = monthly.index[-1]
+        latest_total = monthly.loc[latest].sum()
+        month_income = ai_df[(ai_df["Type"] == "Income")
+                             & (ai_df["Period"] == latest)]["Amount"].sum()
+
+        ins_col, score_col = st.columns([2, 1])
+
+        # ----- Smart insights -----
+        with ins_col:
+            st.subheader("Smart insights")
+            st.write(f"💸 In **{latest}** you spent **{money(latest_total)}** in total.")
+            top_cat = monthly.loc[latest].idxmax()
+            top_share = monthly.loc[latest, top_cat] / latest_total * 100
+            st.write(f"🏆 Your biggest spending category is **{top_cat}** "
+                     f"({top_share:.0f}% of the month).")
+
+            if len(monthly) >= 2:
+                previous = monthly.index[-2]
+                for cat in monthly.columns:
+                    now_value = monthly.loc[latest, cat]
+                    before_value = monthly.loc[previous, cat]
+                    if before_value > 0 and now_value > 0:
+                        change = (now_value - before_value) / before_value * 100
+                        if change >= 15:
+                            st.warning(f"📈 You spent {change:.0f}% more on "
+                                       f"**{cat}** than last month.")
+                        elif change <= -15:
+                            st.success(f"📉 You spent {abs(change):.0f}% less on "
+                                       f"**{cat}** than last month. Great job!")
+
+            if month_income > 0:
+                saved = month_income - latest_total
+                s_rate = saved / month_income * 100
+                if saved >= 0:
+                    st.success(f"🏦 You saved {money(saved)} this month "
+                               f"({s_rate:.0f}% of your income).")
+                else:
+                    st.error(f"⚠️ You spent {money(abs(saved))} more than you "
+                             f"earned this month.")
+
+        # ----- Financial health score -----
+        with score_col:
+            st.subheader("Financial health score")
+            if month_income > 0:
+                s_rate = (month_income - latest_total) / month_income * 100
+                savings_part = min(max(s_rate, 0) / 30, 1) * 50
+                if st.session_state.budgets:
+                    ok = sum(
+                        1 for c, b in st.session_state.budgets.items()
+                        if float(monthly.loc[latest].get(c, 0)) <= b
+                    )
+                    budget_part = ok / len(st.session_state.budgets) * 50
+                else:
+                    budget_part = 25
+                score = round(savings_part + budget_part)
+                if score >= 75:
+                    label, s_color = "Excellent", GREEN
+                elif score >= 50:
+                    label, s_color = "Good", BLUE
+                elif score >= 30:
+                    label, s_color = "Needs attention", AMBER
+                else:
+                    label, s_color = "At risk", RED
+                st.markdown(kpi("Score out of 100", f"{score}", label, s_color),
+                            unsafe_allow_html=True)
+                st.caption("Half of the score comes from your savings rate "
+                           "(30% saved = full marks). The other half comes from "
+                           "how many budgets you stayed within.")
+            else:
+                st.info("Add some income this month to see your score.")
+
+        st.divider()
+
+        # ----- Forecast -----
+        st.subheader("Next month forecast")
+        if len(monthly) < 2:
+            st.info("The forecast needs at least 2 months of data.")
+        else:
+            x = np.arange(len(monthly))
+            next_x = len(monthly)
+            forecast = {}
+            for cat in monthly.columns:
+                slope, intercept = np.polyfit(x, monthly[cat].values, 1)
+                forecast[cat] = max(0.0, slope * next_x + intercept)
+
+            total_forecast = sum(forecast.values())
+            next_month = monthly.index[-1] + 1
+            last_total = monthly.iloc[-1].sum()
+
+            fc1, fc2 = st.columns([2, 1])
+            with fc1:
+                totals = monthly.sum(axis=1)
+                labels = [str(m) for m in totals.index] + [f"{next_month}"]
+                chart_df = pd.DataFrame({
+                    "Month": labels,
+                    "Spending": list(totals.values) + [total_forecast],
+                    "Kind": ["Actual"] * len(totals) + ["Forecast"],
+                })
+                fchart = alt.Chart(chart_df).mark_bar().encode(
+                    x=alt.X("Month:N", sort=None, title=None),
+                    y=alt.Y("Spending:Q", title="Spending (₹)"),
+                    color=alt.Color("Kind:N",
+                                    scale=alt.Scale(domain=["Actual", "Forecast"],
+                                                    range=[BLUE, AMBER]),
+                                    legend=alt.Legend(title=None)),
+                    tooltip=["Month:N", "Kind:N",
+                             alt.Tooltip("Spending:Q", format=",.0f")],
+                ).properties(height=300)
+                stretch(st.altair_chart, fchart)
+            with fc2:
+                diff = total_forecast - last_total
+                st.markdown(
+                    kpi(f"Predicted spending for {next_month}",
+                        money(total_forecast),
+                        f"{money(diff)} vs {latest}", AMBER),
+                    unsafe_allow_html=True,
+                )
+                forecast_table = pd.DataFrame({
+                    "Category": list(forecast.keys()),
+                    "Forecast (₹)": [round(v) for v in forecast.values()],
+                }).sort_values("Forecast (₹)", ascending=False)
+                st.write("")
+                stretch(st.dataframe, forecast_table, hide_index=True)
+
+            for cat, budget in st.session_state.budgets.items():
+                if forecast.get(cat, 0) > budget:
+                    st.warning(f"🔮 At this pace you may go over your **{cat}** "
+                               f"budget next month (forecast "
+                               f"{money(forecast[cat])} vs budget {money(budget)}).")
+
+            st.caption("Forecast method: linear regression (a straight-line trend "
+                       "through your past monthly spending).")
