@@ -7,7 +7,7 @@ import streamlit as st
 from datetime import date
 
 st.set_page_config(
-    page_title="FinTrack | Personal Expense Tracker",
+    page_title="SpendLens | Personal Expense Tracker",
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded",
