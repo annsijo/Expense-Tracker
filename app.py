@@ -1,14 +1,28 @@
 import os
 import json
+import html as html_lib
 import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import date
 
+# The PDF tool is optional: if it is missing, the app still works.
+try:
+    from fpdf import FPDF
+    PDF_OK = True
+except Exception:
+    PDF_OK = False
+
+# ---------- Brand identity ----------
+BRAND_NAME = "Finora"
+BRAND_SLOGAN = "Smart Money, Smarter You"
+BRAND_TAGLINE = "Where Money Meets Clarity"
+
 st.set_page_config(
-    page_title="SpendLens | Personal Expense Tracker",
-    page_icon="💰",
+    page_title=f"{BRAND_NAME} | {BRAND_SLOGAN}",
+    page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -27,23 +41,47 @@ st.markdown("""
 <style>
 .block-container {padding-top: 1.5rem; max-width: 1250px;}
 .hero {background: linear-gradient(120deg, #0A2540 0%, #0F4C81 60%, #1C7ED6 100%);
+       background-size: 200% 200%; animation: heroflow 8s ease infinite;
        padding: 26px 32px; border-radius: 16px; margin-bottom: 18px;}
-.hero .title {color: #FFFFFF; font-size: 2rem; font-weight: 800;}
-.hero .subtitle {color: #D6E4F5; font-size: 1rem; margin-top: 4px;}
+@keyframes heroflow {0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;} 100% {background-position: 0% 50%;}}
+.hero-row {display: flex; align-items: center; gap: 16px;}
+.logo {width: 62px; height: 62px; border-radius: 18px; color: #FFFFFF;
+       background: linear-gradient(135deg, #4DABF7, #1E8E5A);
+       font-size: 36px; font-weight: 800; display: flex;
+       align-items: center; justify-content: center;
+       box-shadow: 0 4px 14px rgba(0,0,0,0.30);}
+.hero .title {color: #FFFFFF; font-size: 2.2rem; font-weight: 800;
+              letter-spacing: 0.02em; line-height: 1.1;}
+.hero .slogan {color: #D6E4F5; font-size: 1.05rem; margin-top: 4px;}
+.hero .tagline {margin-top: 14px; display: inline-block; color: #FFFFFF;
+                background: rgba(255,255,255,0.16); padding: 5px 16px;
+                border-radius: 20px; font-size: 0.9rem; letter-spacing: 0.05em;}
 .kpi {background: #FFFFFF; border-radius: 14px; padding: 18px 20px;
-      border-left: 6px solid #0F4C81; box-shadow: 0 2px 8px rgba(10,37,64,0.10);}
+      border-left: 6px solid #0F4C81; box-shadow: 0 2px 8px rgba(10,37,64,0.10);
+      transition: transform .2s ease, box-shadow .2s ease;
+      animation: rise .6s ease both;}
+.kpi:hover {transform: translateY(-4px);
+            box-shadow: 0 8px 18px rgba(10,37,64,0.18);}
 .kpi .label {color: #5B6B7F; font-size: 0.8rem; text-transform: uppercase;
              letter-spacing: 0.05em; font-weight: 600;}
 .kpi .value {color: #0A2540; font-size: 1.8rem; font-weight: 800; margin-top: 4px;}
 .kpi .sub {color: #5B6B7F; font-size: 0.8rem; margin-top: 2px;}
 .bcard {background: #FFFFFF; border-radius: 14px; padding: 16px 20px;
-        margin-bottom: 12px; box-shadow: 0 2px 8px rgba(10,37,64,0.08);}
+        margin-bottom: 12px; box-shadow: 0 2px 8px rgba(10,37,64,0.08);
+        transition: transform .2s ease;}
+.bcard:hover {transform: translateX(4px);}
 .bcard .brow {display: flex; justify-content: space-between;
               color: #0A2540; margin-bottom: 8px;}
 .bar-bg {background: #E6ECF4; border-radius: 8px; height: 12px; overflow: hidden;}
-.bar-fill {height: 12px; border-radius: 8px;}
+.bar-fill {height: 12px; border-radius: 8px; animation: grow 1s ease-out;}
 .bcard .bsub {font-size: 0.85rem; margin-top: 6px; font-weight: 600;}
+@keyframes rise {from {opacity: 0; transform: translateY(14px);}
+    to {opacity: 1; transform: translateY(0);}}
+@keyframes grow {from {width: 0;}}
 div[data-testid="stTabs"] button p {font-size: 1.05rem; font-weight: 600;}
+.footer {text-align: center; color: #5B6B7F; font-size: 0.85rem;
+         margin-top: 30px; padding: 14px; border-top: 1px solid #D6DEE9;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -164,8 +202,9 @@ def make_demo_data():
 
 
 # ---------- Sidebar ----------
-st.sidebar.markdown("## 💰 SpendLens")
-st.sidebar.caption("Track income and expenses, set budgets, and get AI insights.")
+st.sidebar.markdown(f"## 💠 {BRAND_NAME}")
+st.sidebar.caption(f"**{BRAND_SLOGAN}**")
+st.sidebar.caption(BRAND_TAGLINE)
 st.sidebar.divider()
 st.sidebar.subheader("Demo tools")
 
@@ -199,9 +238,11 @@ df["Month"] = df["Date"].dt.strftime("%Y-%m")
 
 # ---------- Header banner ----------
 st.markdown(
-    '<div class="hero"><div class="title">💰 SpendLens</div>'
-    '<div class="subtitle">Smart personal expense management: record, '
-    'budget, visualize and forecast your money.</div></div>',
+    f'<div class="hero"><div class="hero-row">'
+    f'<div class="logo">F</div>'
+    f'<div><div class="title">{BRAND_NAME}</div>'
+    f'<div class="slogan">{BRAND_SLOGAN}</div></div></div>'
+    f'<div class="tagline">✦ {BRAND_TAGLINE}</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -630,187 +671,383 @@ with tab_ai:
                        "through your past monthly spending).")
 
 # =====================================================================
-# TAB 5: BILLS AND STATEMENTS
+# TAB 5: BILL PRINTER
 # =====================================================================
-import html as html_lib
-import streamlit.components.v1 as components
+PRINTER_CSS = """
+body{margin:0;padding:10px 0 24px;background:transparent;
+     font-family:'Courier New',monospace;color:#0A2540;}
+.stage{max-width:380px;margin:0 auto;text-align:center;}
+.controls{display:flex;gap:14px;justify-content:center;align-items:center;
+     margin-bottom:12px;font-family:Arial,sans-serif;font-size:13px;}
+.btn{background:#0F4C81;color:#fff;border:none;padding:10px 20px;
+     border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;}
+.btn:disabled{background:#8FA3BA;cursor:wait;}
+.printer{position:relative;z-index:3;
+     background:linear-gradient(#1B3A5C,#0A2540);
+     border-radius:18px 18px 10px 10px;padding:14px 18px 22px;
+     box-shadow:0 8px 18px rgba(10,37,64,.35);}
+.printer .top{display:flex;justify-content:space-between;align-items:center;
+     color:#9DB4CF;font-family:Arial,sans-serif;font-size:12px;
+     letter-spacing:.08em;}
+.led{width:10px;height:10px;border-radius:50%;background:#3b4b5e;
+     display:inline-block;margin-right:6px;}
+.led.on{background:#2ECC71;box-shadow:0 0 8px #2ECC71;
+     animation:blink .35s infinite alternate;}
+@keyframes blink{from{opacity:.4}to{opacity:1}}
+.screen{background:#0b1a2b;color:#5CE1A0;border-radius:6px;padding:6px 10px;
+     margin:10px 0;font-size:13px;text-align:left;}
+.slot{height:10px;background:#02060c;border-radius:5px;margin:0 6px;
+     box-shadow:inset 0 3px 4px rgba(0,0,0,.8);}
+.printer.working{animation:shake .12s infinite;}
+@keyframes shake{0%{transform:translateY(0)}50%{transform:translateY(1px)}
+     100%{transform:translateY(0)}}
+.window{position:relative;z-index:1;overflow:hidden;margin:-6px 22px 0;
+     padding:0 0 24px;}
+.receipt{background:#fff;padding:18px 18px 8px;text-align:left;
+     transform:translateY(-100%);position:relative;
+     filter:drop-shadow(0 3px 4px rgba(10,37,64,.25));}
+.receipt.go{animation:feed 5s steps(60,end) forwards;}
+@keyframes feed{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.edge{height:10px;margin:0 -18px;
+     background:radial-gradient(circle at 5px 10px,transparent 5px,#fff 5.5px);
+     background-size:10px 10px;}
+.brand{font-size:20px;font-weight:bold;text-align:center;}
+.mut{color:#6B7A8C;font-size:11px;text-align:center;margin-top:2px;}
+.dash{border-top:2px dashed #B8C4D2;margin:10px 0;}
+.ln{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;}
+.tot{display:flex;justify-content:space-between;font-size:18px;
+     font-weight:bold;border-top:2px solid #0A2540;
+     border-bottom:2px solid #0A2540;padding:7px 0;margin:8px 0;}
+.stamp{display:block;width:fit-content;margin:12px auto 4px;
+     transform:rotate(-8deg);border:3px solid;padding:2px 12px;
+     font-size:20px;font-weight:bold;border-radius:6px;opacity:.65;}
+.sec{font-size:12px;font-weight:bold;text-transform:uppercase;
+     letter-spacing:.05em;margin:12px 0 2px;}
+.barcode{height:36px;margin:12px 14px 4px;
+     background:repeating-linear-gradient(90deg,#0A2540 0 2px,#fff 2px 4px,
+     #0A2540 4px 5px,#fff 5px 8px,#0A2540 8px 11px,#fff 11px 13px);}
+"""
 
-BRAND_NAME = "SpendLens"  # change this name later when we do the branding
-
-BILL_CSS = """
-body {font-family: 'Courier New', monospace; background: #EEF2F7;
-      margin: 0; padding: 16px; color: #0A2540;}
-.noprint {text-align: center; margin-bottom: 14px;}
-.noprint button {background: #0F4C81; color: white; border: none;
-      padding: 10px 22px; border-radius: 8px; font-size: 15px;
-      cursor: pointer; font-weight: bold;}
-.paper {background: #FFFFFF; max-width: 560px; margin: 0 auto;
-      padding: 28px 30px; border-radius: 6px; position: relative;
-      box-shadow: 0 4px 18px rgba(10,37,64,0.18);
-      border-top: 8px solid #0F4C81;}
-.brand {font-size: 26px; font-weight: bold; text-align: center;}
-.muted {color: #6B7A8C; font-size: 12px; text-align: center; margin-top: 2px;}
-hr.dash {border: none; border-top: 2px dashed #B8C4D2; margin: 16px 0;}
-.line {display: flex; justify-content: space-between; padding: 5px 0;
-      font-size: 14px;}
-.total {display: flex; justify-content: space-between; font-size: 22px;
-      font-weight: bold; padding: 10px 0; border-top: 2px solid #0A2540;
-      border-bottom: 2px solid #0A2540; margin-top: 10px;}
-.stamp {position: absolute; right: 26px; top: 110px;
-      transform: rotate(-14deg); border: 4px solid; padding: 4px 14px;
-      font-size: 26px; font-weight: bold; border-radius: 8px; opacity: 0.55;}
-table {width: 100%; border-collapse: collapse; font-size: 12px;
-      margin-top: 8px;}
-th {text-align: left; border-bottom: 2px solid #0A2540; padding: 5px 4px;}
-td {padding: 5px 4px; border-bottom: 1px solid #E3E9F0;}
-.right {text-align: right;}
-h3 {font-size: 14px; margin: 18px 0 4px 0; text-transform: uppercase;
-    letter-spacing: 0.05em;}
-.sign {margin-top: 30px; display: flex; justify-content: space-between;
-      font-size: 11px; color: #6B7A8C;}
-@media print {
-  .noprint {display: none;}
-  body {background: white; padding: 0;}
-  .paper {box-shadow: none; max-width: 100%;}
+PRINTER_JS = """
+function brrr(sec){
+  try{
+    var ctx=new (window.AudioContext||window.webkitAudioContext)();
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    var l=ctx.createOscillator(),lg=ctx.createGain();
+    o.type='square';o.frequency.value=110;
+    l.type='square';l.frequency.value=22;
+    g.gain.value=0.04;lg.gain.value=0.04;
+    l.connect(lg);lg.connect(g.gain);o.connect(g);g.connect(ctx.destination);
+    o.start();l.start();
+    o.stop(ctx.currentTime+sec);l.stop(ctx.currentTime+sec);
+  }catch(e){}
+}
+var timer=null;
+function startPrint(){
+  var btn=document.getElementById('pbtn'),rec=document.getElementById('rec');
+  var pr=document.getElementById('printer'),led=document.getElementById('led');
+  var scr=document.getElementById('scr');
+  btn.disabled=true;
+  rec.classList.remove('go');
+  rec.style.animationDuration=SECS+'s';
+  void rec.offsetWidth;
+  rec.classList.add('go');
+  pr.classList.add('working');led.classList.add('on');
+  scr.textContent='PRINTING...';
+  if(document.getElementById('snd').checked){brrr(SECS);}
+  clearTimeout(timer);
+  timer=setTimeout(function(){
+    pr.classList.remove('working');led.classList.remove('on');
+    scr.textContent='DONE - TAKE YOUR BILL';
+    btn.disabled=false;btn.textContent='🖨️ Print again';
+  },SECS*1000);
 }
 """
 
 
-def wrap_page(inner):
-    return ("<html><head><meta charset='utf-8'><style>" + BILL_CSS
-            + "</style></head><body><div class='noprint'>"
-            "<button onclick='window.print()'>🖨️ Print / Save as PDF"
-            "</button></div>" + inner + "</body></html>")
-
-
-def receipt_html(r, tx_id):
-    is_income = r["Type"] == "Income"
-    stamp = "RECEIVED" if is_income else "PAID"
-    color = "#1E8E5A" if is_income else "#C0392B"
-    receipt_no = f"{BRAND_NAME[:2].upper()}-{r['Date'].strftime('%y%m%d')}-{int(tx_id):04d}"
-    desc = html_lib.escape(str(r["Description"])) or "-"
+def printer_page(inner, secs=5):
+    brand = html_lib.escape(BRAND_NAME).upper()
     return (
-        '<div class="paper">'
-        f'<div class="brand">💰 {html_lib.escape(BRAND_NAME)}</div>'
-        '<div class="muted">Personal Finance Receipt</div>'
-        '<hr class="dash">'
-        f'<div class="line"><span>Receipt No.</span><span>{receipt_no}</span></div>'
-        f'<div class="line"><span>Date</span><span>{r["Date"].strftime("%d %b %Y")}</span></div>'
-        f'<div class="line"><span>Type</span><span>{r["Type"]}</span></div>'
-        f'<div class="line"><span>Category</span><span>{html_lib.escape(str(r["Category"]))}</span></div>'
-        f'<div class="line"><span>Description</span><span>{desc}</span></div>'
-        '<div style="height:10px"></div>'
-        f'<div class="total"><span>AMOUNT</span><span>₹{r["Amount"]:,.2f}</span></div>'
-        f'<div class="stamp" style="color:{color};border-color:{color}">{stamp}</div>'
-        '<hr class="dash">'
-        '<div class="muted">Thank you for tracking smart!</div>'
-        f'<div class="muted">Generated on {date.today().strftime("%d %b %Y")}</div>'
-        '</div>'
+        "<html><head><meta charset='utf-8'><style>" + PRINTER_CSS
+        + "</style></head><body><div class='stage'>"
+        "<div class='controls'><button class='btn' id='pbtn' "
+        "onclick='startPrint()'>🖨️ Print bill</button>"
+        "<label><input type='checkbox' id='snd' checked> 🔊 Sound</label></div>"
+        "<div class='printer' id='printer'><div class='top'><span>"
+        "<span class='led' id='led'></span>" + brand + " PRINTER</span>"
+        "<span>MODEL FT-80</span></div>"
+        "<div class='screen' id='scr'>READY</div><div class='slot'></div></div>"
+        "<div class='window'><div class='receipt' id='rec'>" + inner
+        + "<div class='edge'></div></div></div></div>"
+        "<script>var SECS=" + str(secs) + ";" + PRINTER_JS + "</script>"
+        "</body></html>"
     )
 
 
-def statement_html(month_df, month_label, budgets):
+def ln(label, value):
+    return ('<div class="ln"><span>' + html_lib.escape(str(label))
+            + '</span><span>' + html_lib.escape(str(value)) + '</span></div>')
+
+
+def thermal_receipt(r, tx_id):
+    is_income = r["Type"] == "Income"
+    stamp = "RECEIVED" if is_income else "PAID"
+    color = "#1E8E5A" if is_income else "#C0392B"
+    no = (f"{BRAND_NAME[:2].upper()}-{r['Date'].strftime('%y%m%d')}-"
+          f"{int(tx_id):04d}")
+    desc = str(r["Description"]) or "-"
+    return (
+        '<div class="brand">💠 ' + html_lib.escape(BRAND_NAME) + '</div>'
+        '<div class="mut">' + html_lib.escape(BRAND_SLOGAN) + '</div>'
+        '<div class="mut">Personal Finance Receipt</div><div class="dash"></div>'
+        + ln("Receipt No.", no)
+        + ln("Date", r["Date"].strftime("%d %b %Y"))
+        + ln("Type", r["Type"])
+        + ln("Category", r["Category"])
+        + ln("Description", desc)
+        + '<div class="tot"><span>AMOUNT</span><span>₹'
+        + f'{r["Amount"]:,.2f}' + '</span></div>'
+        + '<span class="stamp" style="color:' + color + ';border-color:'
+        + color + '">' + stamp + '</span>'
+        + '<div class="barcode"></div>'
+        + '<div class="mut">' + html_lib.escape(BRAND_TAGLINE) + '</div>'
+        + '<div class="mut">Printed on '
+        + date.today().strftime("%d %b %Y") + '</div>'
+    )
+
+
+def thermal_statement(month_df, month_label, budgets):
     income = month_df[month_df["Type"] == "Income"]["Amount"].sum()
     expense = month_df[month_df["Type"] == "Expense"]["Amount"].sum()
     net = income - expense
-
-    rows = ""
-    for _, t in month_df.sort_values("Date").iterrows():
-        sign = "+" if t["Type"] == "Income" else "-"
-        rows += (
-            f'<tr><td>{t["Date"].strftime("%d %b")}</td>'
-            f'<td>{html_lib.escape(str(t["Category"]))}</td>'
-            f'<td>{html_lib.escape(str(t["Description"]))}</td>'
-            f'<td class="right">{sign}₹{t["Amount"]:,.0f}</td></tr>'
-        )
+    net_color = "#1E8E5A" if net >= 0 else "#C0392B"
 
     exp_by_cat = (month_df[month_df["Type"] == "Expense"]
                   .groupby("Category")["Amount"].sum()
                   .sort_values(ascending=False))
-    cat_rows = ""
-    for cat, amt in exp_by_cat.items():
-        share = amt / expense * 100 if expense > 0 else 0
-        cat_rows += (f'<tr><td>{html_lib.escape(str(cat))}</td>'
-                     f'<td class="right">₹{amt:,.0f}</td>'
-                     f'<td class="right">{share:.0f}%</td></tr>')
+    cats = "".join(ln(c, f"₹{a:,.0f}") for c, a in exp_by_cat.items())
 
-    budget_rows = ""
+    buds = ""
     for cat, bud in budgets.items():
         spent = float(exp_by_cat.get(cat, 0))
         status = "OVER" if spent > bud else "OK"
-        budget_rows += (f'<tr><td>{html_lib.escape(str(cat))}</td>'
-                        f'<td class="right">₹{spent:,.0f}</td>'
-                        f'<td class="right">₹{bud:,.0f}</td>'
-                        f'<td class="right">{status}</td></tr>')
-    budget_section = ""
-    if budget_rows:
-        budget_section = (
-            '<h3>Budget check</h3><table><tr><th>Category</th>'
-            '<th class="right">Spent</th><th class="right">Budget</th>'
-            '<th class="right">Status</th></tr>' + budget_rows + '</table>')
+        buds += ln(cat, f"₹{spent:,.0f} / ₹{bud:,.0f}  {status}")
 
-    net_color = "#1E8E5A" if net >= 0 else "#C0392B"
-    return (
-        '<div class="paper" style="max-width:720px">'
-        f'<div class="brand">💰 {html_lib.escape(BRAND_NAME)}</div>'
-        f'<div class="muted">Monthly Statement · {month_label}</div>'
-        '<hr class="dash">'
-        f'<div class="line"><span>Total income</span><span>₹{income:,.2f}</span></div>'
-        f'<div class="line"><span>Total expenses</span><span>₹{expense:,.2f}</span></div>'
-        f'<div class="total" style="color:{net_color}"><span>NET BALANCE</span>'
-        f'<span>₹{net:,.2f}</span></div>'
-        '<h3>Spending by category</h3><table><tr><th>Category</th>'
-        '<th class="right">Amount</th><th class="right">Share</th></tr>'
-        + cat_rows + '</table>'
-        + budget_section +
-        '<h3>All transactions</h3><table><tr><th>Date</th><th>Category</th>'
-        '<th>Description</th><th class="right">Amount</th></tr>'
-        + rows + '</table>'
-        '<div class="sign"><span>Generated on '
-        f'{date.today().strftime("%d %b %Y")}</span>'
-        f'<span>{html_lib.escape(BRAND_NAME)} · Authorized statement</span></div>'
-        '</div>'
+    recent = month_df.sort_values("Date", ascending=False).head(8)
+    txs = ""
+    for _, t in recent.iterrows():
+        sign = "+" if t["Type"] == "Income" else "-"
+        txs += ln(t["Date"].strftime("%d %b") + " " + str(t["Category"]),
+                  f"{sign}₹{t['Amount']:,.0f}")
+
+    out = (
+        '<div class="brand">💠 ' + html_lib.escape(BRAND_NAME) + '</div>'
+        '<div class="mut">' + html_lib.escape(BRAND_SLOGAN) + '</div>'
+        '<div class="mut">Monthly Statement · ' + html_lib.escape(month_label)
+        + '</div><div class="dash"></div>'
+        + ln("Total income", f"₹{income:,.2f}")
+        + ln("Total expenses", f"₹{expense:,.2f}")
+        + '<div class="tot" style="color:' + net_color
+        + '"><span>NET</span><span>₹' + f"{net:,.2f}" + '</span></div>'
+        + '<div class="sec">Spending by category</div>' + cats
     )
+    if buds:
+        out += '<div class="sec">Budget check</div>' + buds
+    out += (
+        '<div class="sec">Latest transactions</div>' + txs
+        + '<div class="barcode"></div>'
+        '<div class="mut">Authorized statement · '
+        + html_lib.escape(BRAND_NAME) + '</div>'
+        '<div class="mut">' + html_lib.escape(BRAND_TAGLINE) + '</div>'
+        '<div class="mut">Printed on ' + date.today().strftime("%d %b %Y")
+        + '</div>'
+    )
+    return out
+
+
+# ---------- PDF versions of the bills ----------
+def clean(text):
+    """The PDF font can't show emojis or the rupee sign, so we clean the text."""
+    return str(text).replace("₹", "Rs. ").encode("latin-1", "replace").decode("latin-1")
+
+
+def inr(x):
+    return f"Rs. {x:,.2f}"
+
+
+def receipt_pdf(r, tx_id):
+    is_income = r["Type"] == "Income"
+    stamp = "RECEIVED" if is_income else "PAID"
+    color = (30, 142, 90) if is_income else (192, 57, 43)
+    receipt_no = (f"{BRAND_NAME[:2].upper()}-"
+                  f"{r['Date'].strftime('%y%m%d')}-{int(tx_id):04d}")
+
+    pdf = FPDF(format="A5")
+    pdf.set_auto_page_break(False)
+    pdf.add_page()
+
+    pdf.set_fill_color(10, 37, 64)
+    pdf.rect(0, 0, 148, 34, style="F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_xy(0, 7)
+    pdf.cell(148, 10, clean(BRAND_NAME), align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(0, 18)
+    pdf.cell(148, 6, clean(BRAND_SLOGAN), align="C")
+    pdf.set_xy(0, 25)
+    pdf.cell(148, 6, "Personal Finance Receipt", align="C")
+
+    pdf.set_text_color(10, 37, 64)
+    y = 48
+    details = [
+        ("Receipt No.", receipt_no),
+        ("Date", r["Date"].strftime("%d %b %Y")),
+        ("Type", r["Type"]),
+        ("Category", r["Category"]),
+        ("Description", r["Description"] or "-"),
+    ]
+    for label, value in details:
+        pdf.set_xy(14, y)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(40, 8, label)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(80, 8, clean(value)[:40], align="R")
+        y += 10
+
+    pdf.set_draw_color(150, 165, 185)
+    pdf.set_line_width(0.3)
+    pdf.set_dash_pattern(dash=2, gap=2)
+    pdf.line(14, y + 2, 134, y + 2)
+    pdf.set_dash_pattern()
+
+    y += 8
+    pdf.set_draw_color(10, 37, 64)
+    pdf.set_line_width(0.6)
+    pdf.line(14, y, 134, y)
+    pdf.line(14, y + 14, 134, y + 14)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_xy(14, y + 2)
+    pdf.cell(40, 10, "AMOUNT")
+    pdf.cell(80, 10, inr(r["Amount"]), align="R")
+
+    pdf.set_draw_color(*color)
+    pdf.set_text_color(*color)
+    pdf.set_line_width(1)
+    with pdf.rotation(angle=15, x=100, y=y + 40):
+        pdf.rect(72, y + 32, 56, 16)
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.set_xy(72, y + 34)
+        pdf.cell(56, 12, stamp, align="C")
+
+    pdf.set_text_color(107, 122, 140)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(0, y + 66)
+    pdf.cell(148, 6, clean(BRAND_TAGLINE), align="C")
+    pdf.set_xy(0, y + 72)
+    pdf.cell(148, 6, f"Generated on {date.today().strftime('%d %b %Y')}",
+             align="C")
+    return bytes(pdf.output())
+
+
+def statement_pdf(month_df, month_label, budgets):
+    income = month_df[month_df["Type"] == "Income"]["Amount"].sum()
+    expense = month_df[month_df["Type"] == "Expense"]["Amount"].sum()
+    net = income - expense
+
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(True, margin=15)
+    pdf.add_page()
+
+    pdf.set_fill_color(10, 37, 64)
+    pdf.rect(0, 0, 210, 32, style="F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_xy(0, 6)
+    pdf.cell(210, 10, clean(BRAND_NAME), align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(0, 16)
+    pdf.cell(210, 6, clean(BRAND_SLOGAN), align="C")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_xy(0, 23)
+    pdf.cell(210, 6, f"Monthly Statement - {month_label}", align="C")
+
+    pdf.set_text_color(10, 37, 64)
+    pdf.set_y(40)
+
+    def heading(text):
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, text, new_x="LMARGIN", new_y="NEXT")
+
+    def table_row(values, widths, aligns, bold=False, shade=False):
+        pdf.set_font("Helvetica", "B" if bold else "", 10)
+        if shade:
+            pdf.set_fill_color(230, 236, 244)
+        for i, (v, w, a) in enumerate(zip(values, widths, aligns)):
+            if i == len(values) - 1:
+                pdf.cell(w, 7, clean(v)[:45], border="B", align=a, fill=shade,
+                         new_x="LMARGIN", new_y="NEXT")
+            else:
+                pdf.cell(w, 7, clean(v)[:45], border="B", align=a, fill=shade)
+
+    pdf.set_font("Helvetica", "", 12)
+    pdf.cell(100, 8, "Total income")
+    pdf.cell(90, 8, inr(income), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(100, 8, "Total expenses")
+    pdf.cell(90, 8, inr(expense), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 14)
+    if net >= 0:
+        pdf.set_text_color(30, 142, 90)
+    else:
+        pdf.set_text_color(192, 57, 43)
+    pdf.cell(100, 10, "NET BALANCE", border="TB")
+    pdf.cell(90, 10, inr(net), border="TB", align="R",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(10, 37, 64)
+
+    exp_by_cat = (month_df[month_df["Type"] == "Expense"]
+                  .groupby("Category")["Amount"].sum()
+                  .sort_values(ascending=False))
+    heading("Spending by category")
+    table_row(["Category", "Amount", "Share"], [100, 50, 40],
+              ["L", "R", "R"], bold=True, shade=True)
+    for cat, amt in exp_by_cat.items():
+        share = amt / expense * 100 if expense > 0 else 0
+        table_row([cat, inr(amt), f"{share:.0f}%"], [100, 50, 40],
+                  ["L", "R", "R"])
+
+    if budgets:
+        heading("Budget check")
+        table_row(["Category", "Spent", "Budget", "Status"],
+                  [70, 40, 40, 40], ["L", "R", "R", "R"],
+                  bold=True, shade=True)
+        for cat, bud in budgets.items():
+            spent = float(exp_by_cat.get(cat, 0))
+            status = "OVER" if spent > bud else "OK"
+            table_row([cat, inr(spent), inr(bud), status],
+                      [70, 40, 40, 40], ["L", "R", "R", "R"])
+
+    heading("All transactions")
+    table_row(["Date", "Category", "Description", "Amount"],
+              [22, 40, 78, 50], ["L", "L", "L", "R"],
+              bold=True, shade=True)
+    for _, t in month_df.sort_values("Date").iterrows():
+        sign = "+" if t["Type"] == "Income" else "-"
+        table_row([t["Date"].strftime("%d %b"), t["Category"],
+                   t["Description"], f"{sign}Rs. {t['Amount']:,.0f}"],
+                  [22, 40, 78, 50], ["L", "L", "L", "R"])
+
+    pdf.ln(6)
+    pdf.set_text_color(107, 122, 140)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 6,
+             f"Generated on {date.today().strftime('%d %b %Y')} - "
+             f"{clean(BRAND_NAME)} authorized statement - "
+             f"{clean(BRAND_TAGLINE)}")
+    return bytes(pdf.output())
 
 
 with tab_bill:
-    st.subheader("🧾 Bills and statements")
-    st.caption("Create a printable receipt or a monthly statement, like a real "
-               "bank or shop bill.")
-
-    if df.empty:
-        st.info("Add some transactions (or load the demo data) to create bills.")
-    else:
-        kind = st.radio("What do you want to create?",
-                        ["Single transaction receipt", "Monthly statement"],
-                        horizontal=True)
-
-        if kind == "Single transaction receipt":
-            def bill_label(i):
-                r = df.loc[i]
-                return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | "
-                        f"{r['Type']} | {r['Category']} | ₹{r['Amount']:,.0f}")
-
-            tx_id = st.selectbox("Choose a transaction", list(df.index),
-                                 format_func=bill_label, key="bill_tx")
-            page = wrap_page(receipt_html(df.loc[tx_id], tx_id))
-            file_name = f"receipt_{tx_id}.html"
-            height = 620
-        else:
-            stmt_month = st.selectbox(
-                "Month", sorted(df["Month"].unique(), reverse=True),
-                key="stmt_month")
-            page = wrap_page(statement_html(
-                df[df["Month"] == stmt_month], stmt_month,
-                st.session_state.budgets))
-            file_name = f"statement_{stmt_month}.html"
-            height = 950
-
-        st.download_button(
-            "⬇️ Download this bill as a file",
-            data=page.encode("utf-8"), file_name=file_name, mime="text/html",
-        )
-        st.caption("To print: click the 🖨️ button inside the bill below. If "
-                   "nothing happens, download the file, open it, and press "
-                   "Cmd + P (or Ctrl + P).")
-        components.html(page, height=height, scrolling=True)
+    st.subheader("🧾 Bill printer")
+    st.caption("Pick a bill, press **Print bill**, and
