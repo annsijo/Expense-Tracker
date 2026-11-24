@@ -27,12 +27,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---------- Colors ----------
-NAVY = "#0A2540"
-BLUE = "#0F4C81"
-GREEN = "#1E8E5A"
-RED = "#C0392B"
-AMBER = "#E0A100"
+# ---------- Colors (navy and blue finance theme) ----------
+ACCENT = "#0F4C81"   # royal blue
+VIOLET = "#0F4C81"   # used for "actual" bars in the forecast chart
+SKY = "#1C7ED6"
+GREEN = "#1E8E5A"    # income / good
+RED = "#C0392B"      # expense / bad
+AMBER = "#E0A100"    # warning / forecast
 PALETTE = ["#0A2540", "#0F4C81", "#1C7ED6", "#4DABF7",
            "#1E8E5A", "#E0A100", "#E67E22", "#7F8C9A"]
 
@@ -92,7 +93,7 @@ def money(x):
     return f"{sign}₹{abs(x):,.0f}"
 
 
-def kpi(label, value, sub="", color=BLUE):
+def kpi(label, value, sub="", color=ACCENT):
     return (f'<div class="kpi" style="border-left-color:{color}">'
             f'<div class="label">{label}</div>'
             f'<div class="value">{value}</div>'
@@ -269,7 +270,7 @@ with tab_dash:
         rate = (balance / income * 100) if income > 0 else 0
 
         k1, k2, k3, k4 = st.columns(4)
-        k1.markdown(kpi("Available balance", money(balance), choice, BLUE),
+        k1.markdown(kpi("Available balance", money(balance), choice, ACCENT),
                     unsafe_allow_html=True)
         k2.markdown(kpi("Total income", money(income), "money in", GREEN),
                     unsafe_allow_html=True)
@@ -519,8 +520,9 @@ with tab_budget:
                     f'<b>{cat}</b>'
                     f'<span>{money(amount_spent)} of {money(bud)}</span>'
                     f'</div><div class="bar-bg"><div class="bar-fill" '
-                    f'style="width:{width:.0f}%;background:{color}"></div>'
-                    f'</div><div class="bsub" style="color:{color}">'
+                    f'style="width:{width:.0f}%;'
+                    f'background:{color}">'
+                    f'</div></div><div class="bsub" style="color:{color}">'
                     f'{status} · {pct * 100:.0f}% used</div></div>',
                     unsafe_allow_html=True,
                 )
@@ -606,7 +608,7 @@ with tab_ai:
                 if score >= 75:
                     label, s_color = "Excellent", GREEN
                 elif score >= 50:
-                    label, s_color = "Good", BLUE
+                    label, s_color = "Good", ACCENT
                 elif score >= 30:
                     label, s_color = "Needs attention", AMBER
                 else:
@@ -652,7 +654,7 @@ with tab_ai:
                     color=alt.Color(
                         "Kind:N",
                         scale=alt.Scale(domain=["Actual", "Forecast"],
-                                        range=[BLUE, AMBER]),
+                                        range=[VIOLET, AMBER]),
                         legend=alt.Legend(title=None)),
                     tooltip=["Month:N", "Kind:N",
                              alt.Tooltip("Spending:Q", format=",.0f")],
