@@ -100,7 +100,7 @@ def kpi(label, value, sub="", color=BLUE):
 
 
 def stretch(func, *args, **kwargs):
-    """Make a table or chart use the full width (works on old and new Streamlit)."""
+    """Make a table or chart use the full width (old and new Streamlit)."""
     try:
         return func(*args, width="stretch", **kwargs)
     except Exception:
@@ -228,7 +228,7 @@ if st.sidebar.button("Clear all data"):
         st.rerun()
     else:
         st.sidebar.warning("Tick the box above first.")
-st.sidebar.caption("Load demo data replaces everything currently in the app.")
+st.sidebar.caption("Load demo data replaces everything in the app.")
 
 # ---------- Prepare the data ----------
 df = st.session_state.transactions.copy()
@@ -275,8 +275,8 @@ with tab_dash:
                     unsafe_allow_html=True)
         k3.markdown(kpi("Total expenses", money(expense), "money out", RED),
                     unsafe_allow_html=True)
-        k4.markdown(kpi("Savings rate", f"{rate:.0f}%", "of income saved", AMBER),
-                    unsafe_allow_html=True)
+        k4.markdown(kpi("Savings rate", f"{rate:.0f}%", "of income saved",
+                        AMBER), unsafe_allow_html=True)
 
         st.write("")
         c1, c2 = st.columns(2)
@@ -300,7 +300,8 @@ with tab_dash:
 
         with c2:
             st.subheader("Income vs expenses by month")
-            trend = df.groupby(["Month", "Type"], as_index=False)["Amount"].sum()
+            trend = df.groupby(["Month", "Type"],
+                               as_index=False)["Amount"].sum()
             bars = alt.Chart(trend).mark_bar().encode(
                 x=alt.X("Month:N", title=None),
                 y=alt.Y("Amount:Q", title="Amount (₹)"),
@@ -318,7 +319,8 @@ with tab_dash:
         with r1:
             st.subheader("Top 5 biggest expenses")
             top = (view[view["Type"] == "Expense"]
-                   .nlargest(5, "Amount")[["Date", "Category", "Amount", "Description"]]
+                   .nlargest(5, "Amount")
+                   [["Date", "Category", "Amount", "Description"]]
                    .copy())
             top["Date"] = top["Date"].dt.date
             stretch(st.dataframe, top, hide_index=True)
@@ -354,7 +356,8 @@ with tab_tx:
                     "Amount": t_amount, "Description": t_desc,
                 }])
                 st.session_state.transactions = pd.concat(
-                    [st.session_state.transactions, new_row], ignore_index=True
+                    [st.session_state.transactions, new_row],
+                    ignore_index=True,
                 )
                 save_transactions()
                 st.toast("Transaction added!")
@@ -367,7 +370,7 @@ with tab_tx:
         else:
             f1, f2 = st.columns(2)
             search = f1.text_input("🔍 Search",
-                                   placeholder="category, description, type...")
+                                   placeholder="category, description, type")
             type_filter = f2.selectbox("Type filter", ["All"] + TYPES)
             f3, f4 = st.columns(2)
             from_date = f3.date_input("From", value=df["Date"].min().date())
@@ -409,8 +412,9 @@ with tab_tx:
     else:
         def make_label(i):
             r = df.loc[i]
-            return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | {r['Type']} | "
-                    f"{r['Category']} | ₹{r['Amount']:,.0f} | {r['Description']}")
+            return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | "
+                    f"{r['Type']} | {r['Category']} | "
+                    f"₹{r['Amount']:,.0f} | {r['Description']}")
 
         selected = st.selectbox("Choose a transaction", list(df.index),
                                 format_func=make_label)
@@ -421,12 +425,14 @@ with tab_tx:
             e_date = e1.date_input("Date", value=row["Date"].date())
             e_type = e2.selectbox("Type", TYPES,
                                   index=safe_index(TYPES, row["Type"]))
-            e_category = e3.selectbox("Category", CATEGORIES,
-                                      index=safe_index(CATEGORIES, row["Category"]))
+            e_category = e3.selectbox(
+                "Category", CATEGORIES,
+                index=safe_index(CATEGORIES, row["Category"]))
             e4, e5 = st.columns(2)
             e_amount = e4.number_input("Amount (₹)", min_value=0.0, step=10.0,
                                        value=float(row["Amount"]))
-            e_desc = e5.text_input("Description", value=str(row["Description"]))
+            e_desc = e5.text_input("Description",
+                                   value=str(row["Description"]))
             b1, b2 = st.columns(2)
             save_clicked = b1.form_submit_button("💾 Save changes")
             delete_clicked = b2.form_submit_button("🗑️ Delete transaction")
@@ -444,7 +450,8 @@ with tab_tx:
 
         if delete_clicked:
             st.session_state.transactions = (
-                st.session_state.transactions.drop(selected).reset_index(drop=True)
+                st.session_state.transactions.drop(selected)
+                .reset_index(drop=True)
             )
             save_transactions()
             st.toast("Transaction deleted!")
@@ -509,10 +516,11 @@ with tab_budget:
                 width = min(pct, 1.0) * 100
                 st.markdown(
                     f'<div class="bcard"><div class="brow">'
-                    f'<b>{cat}</b><span>{money(amount_spent)} of {money(bud)}</span>'
+                    f'<b>{cat}</b>'
+                    f'<span>{money(amount_spent)} of {money(bud)}</span>'
                     f'</div><div class="bar-bg"><div class="bar-fill" '
-                    f'style="width:{width:.0f}%;background:{color}"></div></div>'
-                    f'<div class="bsub" style="color:{color}">'
+                    f'style="width:{width:.0f}%;background:{color}"></div>'
+                    f'</div><div class="bsub" style="color:{color}">'
                     f'{status} · {pct * 100:.0f}% used</div></div>',
                     unsafe_allow_html=True,
                 )
@@ -533,7 +541,8 @@ with tab_ai:
             aggfunc="sum", fill_value=0,
         ).sort_index()
         monthly = monthly.reindex(
-            pd.period_range(monthly.index.min(), monthly.index.max(), freq="M"),
+            pd.period_range(monthly.index.min(), monthly.index.max(),
+                            freq="M"),
             fill_value=0,
         )
 
@@ -547,7 +556,8 @@ with tab_ai:
         # ----- Smart insights -----
         with ins_col:
             st.subheader("Smart insights")
-            st.write(f"💸 In **{latest}** you spent **{money(latest_total)}** in total.")
+            st.write(f"💸 In **{latest}** you spent "
+                     f"**{money(latest_total)}** in total.")
             top_cat = monthly.loc[latest].idxmax()
             top_share = monthly.loc[latest, top_cat] / latest_total * 100
             st.write(f"🏆 Your biggest spending category is **{top_cat}** "
@@ -564,8 +574,9 @@ with tab_ai:
                             st.warning(f"📈 You spent {change:.0f}% more on "
                                        f"**{cat}** than last month.")
                         elif change <= -15:
-                            st.success(f"📉 You spent {abs(change):.0f}% less on "
-                                       f"**{cat}** than last month. Great job!")
+                            st.success(f"📉 You spent {abs(change):.0f}% less "
+                                       f"on **{cat}** than last month. "
+                                       f"Great job!")
 
             if month_income > 0:
                 saved = month_income - latest_total
@@ -574,8 +585,8 @@ with tab_ai:
                     st.success(f"🏦 You saved {money(saved)} this month "
                                f"({s_rate:.0f}% of your income).")
                 else:
-                    st.error(f"⚠️ You spent {money(abs(saved))} more than you "
-                             f"earned this month.")
+                    st.error(f"⚠️ You spent {money(abs(saved))} more than "
+                             f"you earned this month.")
 
         # ----- Financial health score -----
         with score_col:
@@ -600,10 +611,10 @@ with tab_ai:
                     label, s_color = "Needs attention", AMBER
                 else:
                     label, s_color = "At risk", RED
-                st.markdown(kpi("Score out of 100", f"{score}", label, s_color),
-                            unsafe_allow_html=True)
-                st.caption("Half of the score comes from your savings rate "
-                           "(30% saved = full marks). The other half comes from "
+                st.markdown(kpi("Score out of 100", f"{score}", label,
+                                s_color), unsafe_allow_html=True)
+                st.caption("Half of the score is your savings rate "
+                           "(30% saved = full marks). The other half is "
                            "how many budgets you stayed within.")
             else:
                 st.info("Add some income this month to see your score.")
@@ -638,10 +649,11 @@ with tab_ai:
                 fchart = alt.Chart(chart_df).mark_bar().encode(
                     x=alt.X("Month:N", sort=None, title=None),
                     y=alt.Y("Spending:Q", title="Spending (₹)"),
-                    color=alt.Color("Kind:N",
-                                    scale=alt.Scale(domain=["Actual", "Forecast"],
-                                                    range=[BLUE, AMBER]),
-                                    legend=alt.Legend(title=None)),
+                    color=alt.Color(
+                        "Kind:N",
+                        scale=alt.Scale(domain=["Actual", "Forecast"],
+                                        range=[BLUE, AMBER]),
+                        legend=alt.Legend(title=None)),
                     tooltip=["Month:N", "Kind:N",
                              alt.Tooltip("Spending:Q", format=",.0f")],
                 ).properties(height=300)
@@ -663,12 +675,13 @@ with tab_ai:
 
             for cat, budget in st.session_state.budgets.items():
                 if forecast.get(cat, 0) > budget:
-                    st.warning(f"🔮 At this pace you may go over your **{cat}** "
-                               f"budget next month (forecast "
-                               f"{money(forecast[cat])} vs budget {money(budget)}).")
+                    st.warning(f"🔮 At this pace you may go over your "
+                               f"**{cat}** budget next month (forecast "
+                               f"{money(forecast[cat])} vs budget "
+                               f"{money(budget)}).")
 
-            st.caption("Forecast method: linear regression (a straight-line trend "
-                       "through your past monthly spending).")
+            st.caption("Forecast method: linear regression (a straight-line "
+                       "trend through your past monthly spending).")
 
 # =====================================================================
 # TAB 5: BILL PRINTER
@@ -772,11 +785,13 @@ def printer_page(inner, secs=5):
         + "</style></head><body><div class='stage'>"
         "<div class='controls'><button class='btn' id='pbtn' "
         "onclick='startPrint()'>🖨️ Print bill</button>"
-        "<label><input type='checkbox' id='snd' checked> 🔊 Sound</label></div>"
+        "<label><input type='checkbox' id='snd' checked> 🔊 Sound</label>"
+        "</div>"
         "<div class='printer' id='printer'><div class='top'><span>"
         "<span class='led' id='led'></span>" + brand + " PRINTER</span>"
         "<span>MODEL FT-80</span></div>"
-        "<div class='screen' id='scr'>READY</div><div class='slot'></div></div>"
+        "<div class='screen' id='scr'>READY</div><div class='slot'></div>"
+        "</div>"
         "<div class='window'><div class='receipt' id='rec'>" + inner
         + "<div class='edge'></div></div></div></div>"
         "<script>var SECS=" + str(secs) + ";" + PRINTER_JS + "</script>"
@@ -799,7 +814,8 @@ def thermal_receipt(r, tx_id):
     return (
         '<div class="brand">💠 ' + html_lib.escape(BRAND_NAME) + '</div>'
         '<div class="mut">' + html_lib.escape(BRAND_SLOGAN) + '</div>'
-        '<div class="mut">Personal Finance Receipt</div><div class="dash"></div>'
+        '<div class="mut">Personal Finance Receipt</div>'
+        '<div class="dash"></div>'
         + ln("Receipt No.", no)
         + ln("Date", r["Date"].strftime("%d %b %Y"))
         + ln("Type", r["Type"])
@@ -843,7 +859,8 @@ def thermal_statement(month_df, month_label, budgets):
     out = (
         '<div class="brand">💠 ' + html_lib.escape(BRAND_NAME) + '</div>'
         '<div class="mut">' + html_lib.escape(BRAND_SLOGAN) + '</div>'
-        '<div class="mut">Monthly Statement · ' + html_lib.escape(month_label)
+        '<div class="mut">Monthly Statement · '
+        + html_lib.escape(month_label)
         + '</div><div class="dash"></div>'
         + ln("Total income", f"₹{income:,.2f}")
         + ln("Total expenses", f"₹{expense:,.2f}")
@@ -867,8 +884,9 @@ def thermal_statement(month_df, month_label, budgets):
 
 # ---------- PDF versions of the bills ----------
 def clean(text):
-    """The PDF font can't show emojis or the rupee sign, so we clean the text."""
-    return str(text).replace("₹", "Rs. ").encode("latin-1", "replace").decode("latin-1")
+    """The PDF font cannot show emojis or the rupee sign, so we clean text."""
+    text = str(text).replace("₹", "Rs. ")
+    return text.encode("latin-1", "replace").decode("latin-1")
 
 
 def inr(x):
@@ -986,10 +1004,11 @@ def statement_pdf(month_df, month_label, budgets):
             pdf.set_fill_color(230, 236, 244)
         for i, (v, w, a) in enumerate(zip(values, widths, aligns)):
             if i == len(values) - 1:
-                pdf.cell(w, 7, clean(v)[:45], border="B", align=a, fill=shade,
-                         new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(w, 7, clean(v)[:45], border="B", align=a,
+                         fill=shade, new_x="LMARGIN", new_y="NEXT")
             else:
-                pdf.cell(w, 7, clean(v)[:45], border="B", align=a, fill=shade)
+                pdf.cell(w, 7, clean(v)[:45], border="B", align=a,
+                         fill=shade)
 
     pdf.set_font("Helvetica", "", 12)
     pdf.cell(100, 8, "Total income")
@@ -1050,4 +1069,63 @@ def statement_pdf(month_df, month_label, budgets):
 
 with tab_bill:
     st.subheader("🧾 Bill printer")
-    st.caption("Pick a bill, press **Print bill**, and
+    st.caption("Pick a bill and press Print bill.")
+
+    if df.empty:
+        st.info("Add some transactions (or load the demo data) to print bills.")
+    else:
+        kind = st.radio("What do you want to print?",
+                        ["Single transaction receipt", "Monthly statement"],
+                        horizontal=True)
+
+        pdf_bytes = None
+        if kind == "Single transaction receipt":
+            def bill_label(i):
+                r = df.loc[i]
+                return (f"ID {i} | {r['Date'].strftime('%d %b %Y')} | "
+                        f"{r['Type']} | {r['Category']} | "
+                        f"₹{r['Amount']:,.0f}")
+
+            tx_id = st.selectbox("Choose a transaction", list(df.index),
+                                 format_func=bill_label, key="bill_tx")
+            page = printer_page(thermal_receipt(df.loc[tx_id], tx_id), secs=4)
+            pdf_name = f"receipt_{tx_id}.pdf"
+            height = 720
+            if PDF_OK:
+                try:
+                    pdf_bytes = receipt_pdf(df.loc[tx_id], tx_id)
+                except Exception:
+                    pdf_bytes = None
+        else:
+            stmt_month = st.selectbox(
+                "Month", sorted(df["Month"].unique(), reverse=True),
+                key="stmt_month")
+            month_data = df[df["Month"] == stmt_month]
+            page = printer_page(thermal_statement(
+                month_data, stmt_month, st.session_state.budgets), secs=7)
+            pdf_name = f"statement_{stmt_month}.pdf"
+            height = 1050
+            if PDF_OK:
+                try:
+                    pdf_bytes = statement_pdf(
+                        month_data, stmt_month, st.session_state.budgets)
+                except Exception:
+                    pdf_bytes = None
+
+        components.html(page, height=height, scrolling=True)
+
+        if pdf_bytes:
+            st.download_button(
+                "⬇️ Download PDF (for real paper printing)",
+                data=pdf_bytes, file_name=pdf_name, mime="application/pdf",
+            )
+        else:
+            st.caption("PDF download is unavailable. Add fpdf2 to "
+                       "requirements.txt.")
+
+# ---------- Footer ----------
+st.markdown(
+    f'<div class="footer"><b>{BRAND_NAME}</b> · {BRAND_SLOGAN} · '
+    f'{BRAND_TAGLINE}</div>',
+    unsafe_allow_html=True,
+)
